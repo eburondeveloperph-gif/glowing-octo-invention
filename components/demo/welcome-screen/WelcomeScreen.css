@@ -1,0 +1,51 @@
+.welcome-screen {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  height: 100%;
+  text-align: center;
+  color: var(--gray-500);
+}
+
+.welcome-content {
+  max-width: 800px;
+  width: 90%;
+}
+
+.translation-output-container {
+  min-height: 150px;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  padding: 0 10px; /* Add some padding for smaller screens */
+}
+
+.transcript-display {
+  width: 100%;
+  text-align: left;
+}
+
+.transcript-text {
+  font-size: 1.5rem;
+  line-height: 1.5;
+  color: var(--text);
+  font-family: 'Space Mono', monospace;
+  white-space: pre-wrap;
+  word-wrap: break-word;
+}
+
+.cursor {
+  display: inline-block;
+  width: 3px;
+  height: 1em;
+  background-color: var(--text);
+  margin-left: 4px;
+  animation: blink 1s step-end infinite;
+  vertical-align: bottom;
+}
+
+@media (min-width: 768px) {
+  .transcript-text {
+    font-size: 2.5rem;
+  }
+}

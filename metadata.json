@@ -1,0 +1,7 @@
+{
+  "name": "Copy of DualTranslator",
+  "description": "Real-time dual translation powered by Gemini.",
+  "requestFramePermissions": [
+    "microphone"
+  ]
+}
