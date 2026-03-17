@@ -35,25 +35,26 @@ function ControlTray({ children }: ControlTrayProps) {
     connected,
     isTtsMuted,
     toggleTtsMute,
-    volume: ttsVolume,
+    volume: ttsVolumeRaw,
   } = useLiveAPIContext();
 
   const session = useSessionStore();
   const { toggleSidebar, toggleProfile, setMicVolume } = useUI();
-  const activeSpeaker = useUI((s) => s.activeSpeaker);
+  const micVolume = useUI((s) => s.micVolume);
+  const ttsVolume = useUI((s) => s.ttsVolume);
   const setTtsVolume = useUI((s) => s.setTtsVolume);
 
   const isIdle = session.sessionPhase === 'idle';
   const isError = session.sessionPhase === 'error';
   const isActive = !isIdle && !isError;
 
-  useEffect(() => { setTtsVolume(ttsVolume); }, [ttsVolume, setTtsVolume]);
+  useEffect(() => { setTtsVolume(ttsVolumeRaw); }, [ttsVolumeRaw, setTtsVolume]);
 
   const ttsPlayingRef = useRef(false);
   const ttsGraceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
-    if (ttsVolume > 0.01) {
+    if (ttsVolumeRaw > 0.01) {
       ttsPlayingRef.current = true;
       if (ttsGraceRef.current) {
         clearTimeout(ttsGraceRef.current);
@@ -67,7 +68,7 @@ function ControlTray({ children }: ControlTrayProps) {
         }, 800);
       }
     }
-  }, [ttsVolume]);
+  }, [ttsVolumeRaw]);
 
   useEffect(() => {
     if (!connected) {
@@ -176,7 +177,7 @@ function ControlTray({ children }: ControlTrayProps) {
   };
 
   const handleMicToggle = () => {
-    if (connected && !ttsPlayingRef.current) setMuted(!muted);
+    if (connected && ttsVolume <= 0.01) setMuted(!muted);
   };
 
   return (
@@ -211,33 +212,41 @@ function ControlTray({ children }: ControlTrayProps) {
             </svg>
           </button>
 
-          {/* Center mic button — glows with mic volume */}
+          {/* Center mic button — green active + visualizers, red disabled with slash */}
           <button
             className={cn('center-mic-btn', {
-              muted: connected && muted,
-              listening:
-                connected &&
-                !muted &&
-                !ttsPlayingRef.current &&
-                (activeSpeaker === 'staff' || activeSpeaker === 'guest'),
-              'mic-active':
-                connected &&
-                !muted &&
-                !ttsPlayingRef.current &&
-                (activeSpeaker === 'staff' || activeSpeaker === 'guest') &&
-                useUI.getState().micVolume > 0.05,
+              active: connected && !muted && ttsVolume <= 0.01,
+              disabled: !connected || muted || ttsVolume > 0.01,
             })}
             onClick={handleMicToggle}
-            disabled={!connected || ttsPlayingRef.current}
+            disabled={!connected || ttsVolume > 0.01}
             aria-label={muted ? 'Unmute microphone' : 'Mute microphone'}
           >
-            <svg viewBox="0 0 24 24">
-              {connected && muted ? (
-                <path d="M19 11h-1.7c0 .74-.16 1.43-.43 2.05l1.23 1.23c.56-.98.9-2.09.9-3.28zm-4.02.17c0-.06.02-.11.02-.17V5c0-1.66-1.34-3-3-3S9 3.34 9 5v.18l5.98 5.99zM4.27 3L3 4.27l6.01 6.01V11c0 1.66 1.33 3 2.99 3 .22 0 .44-.03.65-.08l1.66 1.66c-.71.33-1.5.52-2.31.52-2.76 0-5.3-2.1-5.3-5.1H5c0 3.41 2.72 6.23 6 6.72V21h2v-3.28c.91-.13 1.77-.45 2.54-.9L19.73 21 21 19.73 4.27 3z" />
-              ) : (
-                <path d="M12 14c1.66 0 3-1.34 3-3V5c0-1.66-1.34-3-3-3S9 3.34 9 5v6c0 1.66 1.34 3 3 3zm5-3c0 2.76-2.24 5-5 5s-5-2.24-5-5H5c0 3.53 2.61 6.43 6 6.92V21h2v-3.08c3.39-.49 6-3.39 6-6.92h-2z" />
+            <span className="mic-btn-inner">
+              {connected && !muted && ttsVolume <= 0.01 && micVolume > 0.05 && (
+                <span className="mic-visualizer" aria-hidden>
+                  {[0, 1, 2, 3, 4].map((i) => (
+                    <span
+                      key={i}
+                      className="mic-visualizer-bar"
+                      style={{
+                        height: `${20 + micVolume * 60 * (0.5 + (i % 3) * 0.25)}%`,
+                        animationDelay: `${i * 0.05}s`,
+                      }}
+                    />
+                  ))}
+                </span>
               )}
-            </svg>
+              <svg viewBox="0 0 24 24" className="mic-icon">
+                {!connected || muted || ttsVolume > 0.01 ? (
+                  /* Red disabled: mic with diagonal slash */
+                  <path d="M19 11h-1.7c0 .74-.16 1.43-.43 2.05l1.23 1.23c.56-.98.9-2.09.9-3.28zm-4.02.17c0-.06.02-.11.02-.17V5c0-1.66-1.34-3-3-3S9 3.34 9 5v.18l5.98 5.99zM4.27 3L3 4.27l6.01 6.01V11c0 1.66 1.33 3 2.99 3 .22 0 .44-.03.65-.08l1.66 1.66c-.71.33-1.5.52-2.31.52-2.76 0-5.3-2.1-5.3-5.1H5c0 3.41 2.72 6.23 6 6.72V21h2v-3.28c.91-.13 1.77-.45 2.54-.9L19.73 21 21 19.73 4.27 3z" />
+                ) : (
+                  /* Green active: mic only */
+                  <path d="M12 14c1.66 0 3-1.34 3-3V5c0-1.66-1.34-3-3-3S9 3.34 9 5v6c0 1.66 1.34 3 3 3zm5-3c0 2.76-2.24 5-5 5s-5-2.24-5-5H5c0 3.53 2.61 6.43 6 6.92V21h2v-3.08c3.39-.49 6-3.39 6-6.92h-2z" />
+                )}
+              </svg>
+            </span>
           </button>
 
           {/* Settings */}

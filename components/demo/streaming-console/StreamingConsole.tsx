@@ -15,6 +15,7 @@ import { inferTurnDirection } from '../../../lib/language-detection';
 import { AVAILABLE_LANGUAGES } from '../../../lib/constants';
 import { createSession, endSession, saveTranslation } from '../../../lib/db';
 import { supabase } from '../../../lib/supabase';
+import { playTurnChime, playLanguageConfirmedChime } from '../../../lib/chime';
 import SessionDisplay from '../welcome-screen/SessionDisplay';
 
 export default function StreamingConsole() {
@@ -36,28 +37,6 @@ export default function StreamingConsole() {
   staffLangRef.current = session.staffLanguage;
 
   const prevSpeakerRef = useRef<'staff' | 'guest' | 'ai' | 'none'>('none');
-
-  function playTurnChime() {
-    try {
-      const ctx = new AudioContext();
-      const g = ctx.createGain();
-      g.connect(ctx.destination);
-      g.gain.setValueAtTime(0.25, ctx.currentTime);
-      g.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.4);
-
-      const o = ctx.createOscillator();
-      o.type = 'sine';
-      o.frequency.setValueAtTime(1100, ctx.currentTime);
-      o.frequency.linearRampToValueAtTime(1600, ctx.currentTime + 0.18);
-      o.connect(g);
-      o.start();
-      o.stop(ctx.currentTime + 0.4);
-
-      setTimeout(() => ctx.close().catch(() => {}), 600);
-    } catch {
-      // ignore
-    }
-  }
 
   const buildConfig = useCallback(
     (systemPrompt: string) =>
@@ -83,26 +62,9 @@ export default function StreamingConsole() {
       welcomeCompletedRef.current = false;
       pendingLanguageRef.current = null;
       useLogStore.getState().clearTurns();
-      session.setPhase('detecting');
-      // Play 13s intro, mic disabled until it finishes
-      useUI.getState().setIntroComplete(false);
+      session.setPhase('prompting');
+      useUI.getState().setIntroComplete(true);
       useUI.getState().setIntroVolume(0);
-
-      const audio = new Audio('/intro.mp3');
-      audio.onended = () => {
-        useUI.getState().setIntroComplete(true);
-        useUI.getState().setIntroVolume(0);
-      };
-      audio.onerror = () => {
-        useUI.getState().setIntroComplete(true);
-      };
-      audio.play().catch(() => useUI.getState().setIntroComplete(true));
-      // Fallback: enable mic after 13s if audio ends early
-      setTimeout(() => {
-        if (!useUI.getState().introComplete) {
-          useUI.getState().setIntroComplete(true);
-        }
-      }, 13000);
 
       supabase.auth.getUser().then(({ data }) => {
         if (data.user) {
@@ -124,6 +86,7 @@ export default function StreamingConsole() {
       useUI.getState().setActiveSpeaker('none');
       useUI.getState().setIntroComplete(false);
       useUI.getState().setIntroVolume(0);
+      useUI.getState().setGuestLanguageJustConfirmed(false);
       pendingLanguageRef.current = null;
 
       const dbSid = useUI.getState().dbSessionId;
@@ -152,7 +115,7 @@ export default function StreamingConsole() {
         detectionBufferRef.current = '';
         pendingLanguageRef.current = null;
         welcomeCompletedRef.current = false;
-        session.setPhase('detecting');
+        session.setPhase('prompting');
         const prompt = buildDetectionPrompt(sLang);
         disconnect();
         connectWithConfig(buildConfig(prompt)).catch(() =>
@@ -169,6 +132,9 @@ export default function StreamingConsole() {
       if (useSessionStore.getState().guestLanguage) return;
       const sLang = staffLangRef.current;
       useSessionStore.getState().setGuestLanguage(locale, confidence, 'auto');
+      useUI.getState().setGuestLanguageJustConfirmed(true);
+      playLanguageConfirmedChime();
+      setTimeout(() => useUI.getState().setGuestLanguageJustConfirmed(false), 1500);
       const prompt = buildBidirectionalPrompt(locale, topic, sLang);
       disconnect();
       connectWithConfig(buildConfig(prompt))

@@ -109,6 +109,7 @@ export const useUI = create<{
   introComplete: boolean;
   dbSessionId: string | null;
   activeSpeaker: 'none' | 'staff' | 'guest' | 'ai';
+  guestLanguageJustConfirmed: boolean;
   toggleSidebar: () => void;
   toggleProfile: () => void;
   setMicVolume: (v: number) => void;
@@ -116,6 +117,7 @@ export const useUI = create<{
   setTtsVolume: (v: number) => void;
   setIntroComplete: (v: boolean) => void;
   setActiveSpeaker: (s: 'none' | 'staff' | 'guest' | 'ai') => void;
+  setGuestLanguageJustConfirmed: (v: boolean) => void;
 }>((set) => ({
   isSidebarOpen: false,
   isProfileOpen: false,
@@ -125,6 +127,7 @@ export const useUI = create<{
   introComplete: false,
   dbSessionId: null,
   activeSpeaker: 'none',
+  guestLanguageJustConfirmed: false,
   toggleSidebar: () => set((s) => ({ isSidebarOpen: !s.isSidebarOpen, isProfileOpen: false })),
   toggleProfile: () => set((s) => ({ isProfileOpen: !s.isProfileOpen, isSidebarOpen: false })),
   setMicVolume: (micVolume) => set({ micVolume }),
@@ -132,6 +135,7 @@ export const useUI = create<{
   setTtsVolume: (ttsVolume) => set({ ttsVolume }),
   setIntroComplete: (introComplete) => set({ introComplete }),
   setActiveSpeaker: (activeSpeaker) => set({ activeSpeaker }),
+  setGuestLanguageJustConfirmed: (guestLanguageJustConfirmed) => set({ guestLanguageJustConfirmed }),
 }));
 
 // ---------------------------------------------------------------------------
