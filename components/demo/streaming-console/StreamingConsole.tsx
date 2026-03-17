@@ -24,6 +24,7 @@ export default function StreamingConsole() {
   const { addHistoryItem } = useHistoryStore();
 
   const detectionBufferRef = useRef('');
+  const pendingLanguageRef = useRef<string | null>(null);
   const welcomeCompletedRef = useRef(false);
   const phaseRef = useRef(session.sessionPhase);
   phaseRef.current = session.sessionPhase;
@@ -80,11 +81,28 @@ export default function StreamingConsole() {
     if (action === 'start') {
       detectionBufferRef.current = '';
       welcomeCompletedRef.current = false;
+      pendingLanguageRef.current = null;
       useLogStore.getState().clearTurns();
-      session.setPhase('prompting');
-      // No more intro.mp3 – mark intro complete immediately so mic can open
-      useUI.getState().setIntroComplete(true);
+      session.setPhase('detecting');
+      // Play 13s intro, mic disabled until it finishes
+      useUI.getState().setIntroComplete(false);
       useUI.getState().setIntroVolume(0);
+
+      const audio = new Audio('/intro.mp3');
+      audio.onended = () => {
+        useUI.getState().setIntroComplete(true);
+        useUI.getState().setIntroVolume(0);
+      };
+      audio.onerror = () => {
+        useUI.getState().setIntroComplete(true);
+      };
+      audio.play().catch(() => useUI.getState().setIntroComplete(true));
+      // Fallback: enable mic after 13s if audio ends early
+      setTimeout(() => {
+        if (!useUI.getState().introComplete) {
+          useUI.getState().setIntroComplete(true);
+        }
+      }, 13000);
 
       supabase.auth.getUser().then(({ data }) => {
         if (data.user) {
@@ -106,6 +124,7 @@ export default function StreamingConsole() {
       useUI.getState().setActiveSpeaker('none');
       useUI.getState().setIntroComplete(false);
       useUI.getState().setIntroVolume(0);
+      pendingLanguageRef.current = null;
 
       const dbSid = useUI.getState().dbSessionId;
       if (dbSid) {
@@ -131,6 +150,7 @@ export default function StreamingConsole() {
           .catch(() => session.setError('Herverbinding mislukt'));
       } else {
         detectionBufferRef.current = '';
+        pendingLanguageRef.current = null;
         welcomeCompletedRef.current = false;
         session.setPhase('detecting');
         const prompt = buildDetectionPrompt(sLang);
@@ -167,18 +187,24 @@ export default function StreamingConsole() {
         return;
       }
 
-      if (!gLang && (phase === 'detecting' || (phase === 'prompting' && welcomeCompletedRef.current))) {
-        // First guest answer should be a language name. Accumulate until final,
-        // then map to one of our AVAILABLE_LANGUAGES and commit.
+      if (!gLang && phase === 'detecting') {
         detectionBufferRef.current += ' ' + text;
         const trimmed = detectionBufferRef.current.trim();
         useSessionStore.getState().setLastDetectedTranscript(trimmed);
 
         if (!isFinal) return;
 
-        const answer = trimmed.toLowerCase();
-        let matched: string | null = null;
+        const answer = trimmed.toLowerCase().trim();
 
+        // User said "confirm" or "yes" → lock pending language
+        if (/^(confirm|yes|ok|yeah|yep|oui|ja|si)$/.test(answer) && pendingLanguageRef.current) {
+          commitLanguage(pendingLanguageRef.current, 1.0);
+          pendingLanguageRef.current = null;
+          return;
+        }
+
+        // User said a language name → store for confirmation, AI will say "Confirm for X"
+        let matched: string | null = null;
         for (const lang of AVAILABLE_LANGUAGES) {
           const name = lang.name.toLowerCase();
           const value = lang.value.toLowerCase();
@@ -194,9 +220,8 @@ export default function StreamingConsole() {
             break;
           }
         }
-
         if (matched) {
-          commitLanguage(matched, 1.0);
+          pendingLanguageRef.current = matched;
         }
         return;
       }
