@@ -62,6 +62,7 @@ function buildRecords(turns: ConversationTurn[], staffLang: string, guestLang: s
     }
 
     if (agent?.text?.trim().match(/^Confirm for /i)) continue;
+    if (/^thinking\.?\.*$/i.test(agent?.text?.trim() ?? '')) continue;
     if (t.text.trim().length < 3) continue;
 
     const rawStaff = speaker === 'staff' ? t.text.trim() : (agent?.text?.trim() ?? '');

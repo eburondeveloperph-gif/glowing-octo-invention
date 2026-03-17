@@ -28,28 +28,51 @@ function isEmptyOrEllipsis(text: string): boolean {
   return !t || /^[.…\s]+$/i.test(t);
 }
 
-/** Strip model commentary (headers, reasoning) and return only the translation. */
+/** Strip model commentary (headers, reasoning, thinking) and return only the translation. */
 function stripTranslationCommentary(text: string): string {
-  const t = text.trim();
+  let t = text.trim();
   if (!t || t.length < 3) return t;
-  if (!/\*\*|Translating|I've got it|I'm (now )?focusing|The goal is|my (task|current challenge)|After considering|Finding the right/i.test(t)) {
-    return t;
-  }
+
+  // Remove <thinking>...</thinking> blocks (Gemini thinking mode)
+  t = t.replace(/<thinking>[\s\S]*?<\/thinking>/gi, '').trim();
+  t = t.replace(/<thought>[\s\S]*?<\/thought>/gi, '').trim();
+
+  // Drop paragraphs that are purely meta (standalone "Thinking", "Let me think", etc.)
+  const metaStart = /^(Thinking\.?|Let me think\.?|Translating|I've got it|I'm (now )?focusing|The goal is|my (task|current challenge)|After considering|Finding the right)/i;
   const paragraphs = t.split(/\n\n+/).map((p) => p.trim()).filter(Boolean);
-  const translationCandidates = paragraphs.filter(
+  const nonMeta = paragraphs.filter(
     (p) =>
-      p.length < 200 &&
-      !/^(I've|I'm|The|My|After|Finding|So|Thus|Therefore)/i.test(p) &&
-      !/\*\*/.test(p),
+      !metaStart.test(p) &&
+      !/^\[?thinking\]?\.?$/i.test(p) &&
+      p.length > 2 &&
+      !/^(So|Thus|Therefore),?\s+[A-Z]/.test(p),
   );
-  if (translationCandidates.length > 0) {
-    return translationCandidates[translationCandidates.length - 1].trim();
+  if (nonMeta.length > 0) t = nonMeta.join('\n\n');
+
+  // If text still looks like commentary, extract translation
+  if (
+    /\*\*|Translating|I've got it|I'm (now )?focusing|The goal is|my (task|current challenge)|After considering|Finding the right|^Thinking\.?$/im.test(t)
+  ) {
+    const paras = t.split(/\n\n+/).map((p) => p.trim()).filter(Boolean);
+    const translationCandidates = paras.filter(
+      (p) =>
+        p.length < 200 &&
+        !/^(I've|I'm|The|My|After|Finding|So|Thus|Therefore|Thinking|Let me)/i.test(p) &&
+        !/\*\*/.test(p),
+    );
+    if (translationCandidates.length > 0) {
+      return translationCandidates[translationCandidates.length - 1].trim();
+    }
+    const lastPara = paras[paras.length - 1];
+    if (lastPara && lastPara.length < 300 && !/\*\*/.test(lastPara)) return lastPara.trim();
+    t = t.replace(/\*\*[^*]+\*\*/g, '').trim();
+    const lines = t
+      .split(/\n/)
+      .filter((l) => l.length < 150 && !/^(I've|I'm|The|My|After|Finding|Thinking|Let me)/i.test(l));
+    return (lines[lines.length - 1] ?? t).trim();
   }
-  const lastPara = paragraphs[paragraphs.length - 1];
-  if (lastPara && lastPara.length < 300 && !/\*\*/.test(lastPara)) return lastPara.trim();
-  let out = t.replace(/\*\*[^*]+\*\*/g, '').trim();
-  const lines = out.split(/\n/).filter((l) => l.length < 150 && !/^(I've|I'm|The|My|After|Finding)/i.test(l));
-  return (lines[lines.length - 1] ?? out).trim();
+
+  return t;
 }
 
 function extractLanguageFromConfirm(text: string): string | null {
@@ -102,6 +125,8 @@ export default function StreamingConsole() {
         inputAudioTranscription: {},
         outputAudioTranscription: {},
         systemInstruction: { parts: [{ text: systemPrompt }] },
+        // Disable thinking mode to avoid reasoning in transcription (if supported)
+        thinkingConfig: { thinkingBudget: 0 },
       }) as any,
     [voice],
   );
@@ -361,11 +386,14 @@ export default function StreamingConsole() {
 
       if (isNoiseMarker(text)) return;
 
+      // Skip pure thinking/meta in live phase (e.g. "Thinking", "Thinking...")
+      if (phaseRef.current === 'live' && /^thinking\.?\.*$/i.test(text.trim())) return;
+
       let finalText = '';
       if (last && last.role === 'agent' && !last.isFinal) {
         const separator = last.text.endsWith(' ') || text.startsWith(' ') ? '' : ' ';
         finalText = last.text + separator + text;
-        if (phaseRef.current === 'live' && isFinal) {
+        if (phaseRef.current === 'live') {
           finalText = stripTranslationCommentary(finalText.trim());
         }
         if (!isEmptyOrEllipsis(finalText)) {
@@ -373,7 +401,7 @@ export default function StreamingConsole() {
         }
       } else {
         finalText = text;
-        if (phaseRef.current === 'live' && isFinal) {
+        if (phaseRef.current === 'live') {
           finalText = stripTranslationCommentary(finalText.trim());
         }
         if (isEmptyOrEllipsis(finalText) && phaseRef.current === 'live') return;
@@ -406,9 +434,10 @@ export default function StreamingConsole() {
           ?.map((p: any) => p.text)
           .filter(Boolean)
           .join(' ') ?? '';
-      if (phaseRef.current === 'live' && text.includes('\n\n') && text.trim().length > 80) {
+      if (phaseRef.current === 'live' && text.trim()) {
         const stripped = stripTranslationCommentary(text.trim());
         if (stripped && !isEmptyOrEllipsis(stripped)) text = stripped;
+        else if (isEmptyOrEllipsis(stripped) || /^thinking\.?$/i.test(stripped)) return;
       }
       if (isNoiseMarker(text) || (phaseRef.current === 'live' && isEmptyOrEllipsis(text))) return;
       const groundingChunks = serverContent.groundingMetadata?.groundingChunks as any;
