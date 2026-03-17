@@ -102,64 +102,57 @@ function ControlTray({ children }: ControlTrayProps) {
   }, [connected, client, muted, audioRecorder, setMicVolume]);
 
   // --- Background audio recording ---
-  const blobResolveRef = useRef<((blob: Blob | null) => void) | null>(null);
+  const recorderRef = useRef<MediaRecorder | null>(null);
+  const recStreamRef = useRef<MediaStream | null>(null);
+  const recChunksRef = useRef<Blob[]>([]);
+  const sessionIdRef = useRef<string | null>(null);
 
   useEffect(() => {
     if (!isActive) return;
 
-    let recorder: MediaRecorder | null = null;
-    let stream: MediaStream | null = null;
-    const chunks: Blob[] = [];
-
     const startRecording = async () => {
       try {
-        stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        recStreamRef.current = stream;
         const mimeType = MediaRecorder.isTypeSupported('audio/webm;codecs=opus')
           ? 'audio/webm;codecs=opus'
           : 'audio/webm';
-        recorder = new MediaRecorder(stream, { mimeType });
-
+        const recorder = new MediaRecorder(stream, { mimeType });
+        recChunksRef.current = [];
         recorder.ondataavailable = (e) => {
-          if (e.data.size > 0) chunks.push(e.data);
+          if (e.data.size > 0) recChunksRef.current.push(e.data);
         };
-
-        recorder.onstop = () => {
-          const blob = chunks.length > 0 ? new Blob(chunks, { type: mimeType }) : null;
-          if (blobResolveRef.current) {
-            blobResolveRef.current(blob);
-            blobResolveRef.current = null;
-          }
-          stream?.getTracks().forEach((t) => t.stop());
-        };
-
         recorder.start(1000);
+        recorderRef.current = recorder;
       } catch (err) {
         console.error('Recording start failed:', err);
       }
     };
 
     startRecording();
-
-    return () => {
-      if (recorder && recorder.state !== 'inactive') {
-        blobResolveRef.current = (blob) => {
-          if (blob) setPendingBlob(blob);
-        };
-        recorder.stop();
-      } else {
-        stream?.getTracks().forEach((t) => t.stop());
-      }
-    };
   }, [isActive]);
-
-  const sessionIdRef = useRef<string | null>(null);
-
-  useEffect(() => {
-    sessionIdRef.current = useUI.getState().dbSessionId;
-  });
 
   const handleStop = () => {
     sessionIdRef.current = useUI.getState().dbSessionId;
+
+    const recorder = recorderRef.current;
+    const stream = recStreamRef.current;
+
+    if (recorder && recorder.state !== 'inactive') {
+      recorder.onstop = () => {
+        const mimeType = recorder.mimeType || 'audio/webm';
+        const blob = recChunksRef.current.length > 0
+          ? new Blob(recChunksRef.current, { type: mimeType })
+          : null;
+        if (blob) setPendingBlob(blob);
+        stream?.getTracks().forEach((t) => t.stop());
+        recorderRef.current = null;
+        recStreamRef.current = null;
+        recChunksRef.current = [];
+      };
+      recorder.stop();
+    }
+
     session.requestStop();
   };
 

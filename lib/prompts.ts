@@ -10,6 +10,10 @@ INPUT in ${guestLanguage} → OUTPUT translation in ${staff}.
 
 ONLY output the translated words. Zero other text.
 
+Your output language MUST ALWAYS be the opposite language.
+- If input is ${staff}, output MUST be ${guestLanguage} (never ${staff}).
+- If input is ${guestLanguage}, output MUST be ${staff} (never ${guestLanguage}).
+
 FORBIDDEN — never output any of these:
 - "Translating…", "Here is…", "The translation is…"
 - Thinking, reasoning, explanations, commentary

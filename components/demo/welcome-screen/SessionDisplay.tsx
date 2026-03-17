@@ -2,6 +2,7 @@ import React, { useMemo, useRef, useEffect, useState } from 'react';
 import cn from 'classnames';
 import './SessionDisplay.css';
 import { useSessionStore, useLogStore, useUI, ConversationTurn } from '../../../lib/state';
+import { whichLanguage } from '../../../lib/language-detection';
 
 function playChime() {
   const ctx = new AudioContext();
@@ -43,7 +44,7 @@ function isNoise(text: string): boolean {
   return text.replace(/[.\s,!?;:'"()\-–—…]/g, '').trim().length < 2;
 }
 
-function buildRecords(turns: ConversationTurn[]): ConvRecord[] {
+function buildRecords(turns: ConversationTurn[], staffLang: string, guestLang: string | null): ConvRecord[] {
   const records: ConvRecord[] = [];
   for (let i = 0; i < turns.length; i++) {
     const t = turns[i];
@@ -56,11 +57,15 @@ function buildRecords(turns: ConversationTurn[]): ConvRecord[] {
     }
     if (!agent || !agent.text || isNoise(agent.text)) continue;
 
-    const isStaff = t.speakerRole === 'staff';
+    const agentLang = guestLang ? whichLanguage(agent.text, staffLang, guestLang) : null;
+    const agentIsStaffLang = agentLang === 'a';
+
+    const speaker: 'staff' | 'guest' = agentIsStaffLang ? 'guest' : 'staff';
+
     records.push({
-      speaker: isStaff ? 'staff' : 'guest',
-      staffLangText: isStaff ? t.text.trim() : agent.text.trim(),
-      guestLangText: isStaff ? agent.text.trim() : t.text.trim(),
+      speaker,
+      staffLangText: agentIsStaffLang ? agent.text.trim() : t.text.trim(),
+      guestLangText: agentIsStaffLang ? t.text.trim() : agent.text.trim(),
       isStreaming: !agent.isFinal,
       key: i,
     });
@@ -91,7 +96,10 @@ const SessionDisplay: React.FC = () => {
   const isActive = !isIdle && !isError;
   const isDetecting = session.sessionPhase === 'detecting';
 
-  const records = useMemo(() => buildRecords(turns), [turns]);
+  const records = useMemo(
+    () => buildRecords(turns, session.staffLanguage, session.guestLanguage),
+    [turns, session.staffLanguage, session.guestLanguage],
+  );
   const hasConversation = isActive && records.length > 0;
   const showIntroText = isActive && !hasConversation && (isDetecting || !introComplete);
 

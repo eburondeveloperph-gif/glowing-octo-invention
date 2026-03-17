@@ -240,7 +240,8 @@ export default function StreamingConsole() {
       }
 
       if (last && last.role === 'user' && !last.isFinal) {
-        updateLastTurn({ text: last.text + text, isFinal });
+        const separator = last.text.endsWith(' ') || text.startsWith(' ') ? '' : ' ';
+        updateLastTurn({ text: last.text + separator + text, isFinal });
       } else {
         addTurn({
           role: 'user',
@@ -262,7 +263,8 @@ export default function StreamingConsole() {
 
       if (phase === 'prompting' && !welcomeCompletedRef.current) {
         if (last && last.role === 'system' && !last.isFinal) {
-          updateLastTurn({ text: last.text + text, isFinal });
+          const separator = last.text.endsWith(' ') || text.startsWith(' ') ? '' : ' ';
+          updateLastTurn({ text: last.text + separator + text, isFinal });
         } else {
           addTurn({ role: 'system', text, isFinal, speakerRole: 'system' });
         }
@@ -270,7 +272,8 @@ export default function StreamingConsole() {
       }
 
       if (last && last.role === 'agent' && !last.isFinal) {
-        updateLastTurn({ text: last.text + text, isFinal });
+        const separator = last.text.endsWith(' ') || text.startsWith(' ') ? '' : ' ';
+        updateLastTurn({ text: last.text + separator + text, isFinal });
       } else {
         const currentSession = useSessionStore.getState();
         const dir = currentSession.activeTurn;
@@ -293,18 +296,17 @@ export default function StreamingConsole() {
           .filter(Boolean)
           .join(' ') ?? '';
       const groundingChunks = serverContent.groundingMetadata?.groundingChunks as any;
-      if (!text && !groundingChunks) return;
+      // We rely on `outputTranscription` for agent text to avoid double / partial
+      // updates. Here we only enrich the latest agent turn with grounding info.
+      if (!groundingChunks) return;
 
       const turns = useLogStore.getState().turns;
       const last = turns.at(-1);
-      if (last?.role === 'agent' && !last.isFinal) {
-        const u: Partial<ConversationTurn> = { text: last.text + text };
-        if (groundingChunks) {
-          u.groundingChunks = [...(last.groundingChunks || []), ...groundingChunks];
-        }
+      if (last?.role === 'agent') {
+        const u: Partial<ConversationTurn> = {
+          groundingChunks: [...(last.groundingChunks || []), ...groundingChunks],
+        };
         updateLastTurn(u);
-      } else {
-        addTurn({ role: 'agent', text, isFinal: false, groundingChunks });
       }
     };
 

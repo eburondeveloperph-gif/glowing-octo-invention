@@ -210,6 +210,33 @@ export function detectLanguageFromText(text: string): DetectionResult | null {
   return null;
 }
 
+export function whichLanguage(text: string, langA: string, langB: string): 'a' | 'b' | null {
+  const words = text.toLowerCase().replace(/[^\p{L}\s]/gu, '').split(/\s+/).filter(Boolean);
+  if (words.length === 0) return null;
+
+  const aWords = LATIN_INDICATORS[langA] || [];
+  const bWords = LATIN_INDICATORS[langB] || [];
+  let aHits = 0, bHits = 0;
+  for (const w of words) {
+    if (aWords.includes(w)) aHits++;
+    if (bWords.includes(w)) bHits++;
+  }
+
+  const scriptResult = detectByScript(text);
+  if (scriptResult && scriptResult.confidence > 0.4) {
+    const norm = normalizeLanguage(scriptResult.language);
+    if (norm) {
+      if (isStaffLanguage(norm, langA)) return 'a';
+      if (isStaffLanguage(norm, langB)) return 'b';
+    }
+    return 'b';
+  }
+
+  if (aHits > bHits && aHits >= 1) return 'a';
+  if (bHits > aHits && bHits >= 1) return 'b';
+  return null;
+}
+
 export function inferTurnDirection(
   inputText: string,
   guestLanguage: string | null,
