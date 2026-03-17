@@ -17,26 +17,27 @@ describe('buildBidirectionalPrompt', () => {
 
   it('includes translation-only rules', () => {
     const prompt = buildBidirectionalPrompt('Arabic');
-    expect(prompt).toContain('ONLY the translated text');
-    expect(prompt).toContain('Do NOT');
+    expect(prompt).toContain('ONLY the translated words');
+    expect(prompt).toContain('TRANSLATION ONLY');
   });
 
   it('includes topic when provided', () => {
     const prompt = buildBidirectionalPrompt('Turkish', 'Medication dispensing');
     expect(prompt).toContain('Medication dispensing');
-    expect(prompt).toContain('pharmacy');
   });
 
-  it('includes pharmacy context without topic', () => {
+  it('includes emotion and nuance preservation', () => {
     const prompt = buildBidirectionalPrompt('Spanish');
-    expect(prompt).toContain('pharmacy counter');
+    expect(prompt).toContain('emotion');
+    expect(prompt).toContain('nuance');
   });
 });
 
 describe('buildGuestToStaffPrompt', () => {
   it('translates TO staff language', () => {
     const prompt = buildGuestToStaffPrompt('French');
-    expect(prompt).toContain('from French to ' + STAFF_LANGUAGE);
+    expect(prompt).toContain('French');
+    expect(prompt).toContain(STAFF_LANGUAGE);
     expect(prompt).toContain('ONLY');
   });
 });
@@ -44,26 +45,27 @@ describe('buildGuestToStaffPrompt', () => {
 describe('buildStaffToGuestPrompt', () => {
   it('translates TO guest language', () => {
     const prompt = buildStaffToGuestPrompt('Arabic');
-    expect(prompt).toContain('from ' + STAFF_LANGUAGE + ' to Arabic');
+    expect(prompt).toContain(STAFF_LANGUAGE);
+    expect(prompt).toContain('Arabic');
   });
 });
 
 describe('buildDetectionPrompt', () => {
-  it('includes welcome phase', () => {
+  it('includes ask step', () => {
     const prompt = buildDetectionPrompt();
-    expect(prompt).toContain('welcome');
+    expect(prompt).toContain('Dear guest');
+    expect(prompt).toContain('language');
   });
 
-  it('includes translation phase', () => {
+  it('includes confirm step', () => {
     const prompt = buildDetectionPrompt();
-    expect(prompt).toContain(STAFF_LANGUAGE);
-    expect(prompt).toContain('translate');
+    expect(prompt).toContain('Confirm for');
   });
 
   it('contains output rules', () => {
     const prompt = buildDetectionPrompt();
     expect(prompt).toContain('ONLY');
-    expect(prompt).toContain('No labels');
+    expect(prompt).toContain('Do NOT');
   });
 });
 

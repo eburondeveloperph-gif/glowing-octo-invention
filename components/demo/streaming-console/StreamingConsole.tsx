@@ -77,9 +77,14 @@ export default function StreamingConsole() {
 
       const sLang = useSessionStore.getState().staffLanguage;
       const prompt = buildDetectionPrompt(sLang);
-      connectWithConfig(buildConfig(prompt)).catch(() => {
-        session.setError('Kan geen verbinding maken');
-      });
+      connectWithConfig(buildConfig(prompt))
+        .then(() => {
+          // Trigger AI to speak first: ask for guest language (Gemini waits for input otherwise)
+          client.send({ text: 'Session started. Ask the guest for their language now.' });
+        })
+        .catch(() => {
+          session.setError('Kan geen verbinding maken');
+        });
     }
 
     if (action === 'stop') {
@@ -123,7 +128,7 @@ export default function StreamingConsole() {
         );
       }
     }
-  }, [session.pendingAction]);
+  }, [session.pendingAction, client, connectWithConfig, buildConfig, session, disconnect, topic]);
 
   useEffect(() => {
     const { addTurn, updateLastTurn } = useLogStore.getState();

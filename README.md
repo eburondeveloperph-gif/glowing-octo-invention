@@ -2,9 +2,9 @@
 <img width="1200" height="475" alt="GHBanner" src="https://github.com/user-attachments/assets/0aa67016-6eaf-458a-adb2-6e31a0763ed6" />
 </div>
 
-# Orbit Translator — Pharmacy Counter
+# Orbit Translator
 
-Real-time bidirectional speech translator for pharmacy counter interactions.
+Real-time bidirectional speech translator for any field. Preserves emotion, tone, and nuance from the original speaker.
 Staff speaks Dutch (Flemish); guest language is auto-detected.
 
 ## How it works
