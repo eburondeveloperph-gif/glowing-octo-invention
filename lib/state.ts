@@ -73,7 +73,7 @@ export const useSessionStore = create<SessionState>((set) => ({
   requestSelectLanguage: (language) =>
     set({ pendingAction: 'select-language', pendingSelectedLanguage: language }),
   clearPendingAction: () =>
-    set({ pendingAction: null, pendingLanguageOverride: null }),
+    set({ pendingAction: null, pendingLanguageOverride: null, pendingSelectedLanguage: null }),
 
   setStaffLanguage: (language) => set({ staffLanguage: language }),
   setPhase: (phase) => set({ sessionPhase: phase, errorMessage: null }),

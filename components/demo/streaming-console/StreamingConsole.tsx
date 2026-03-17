@@ -75,6 +75,7 @@ export default function StreamingConsole() {
   useEffect(() => {
     const action = session.pendingAction;
     if (!action) return;
+    const locale = action === 'select-language' ? useSessionStore.getState().pendingSelectedLanguage : null;
     session.clearPendingAction();
 
     if (action === 'start') {
@@ -100,9 +101,6 @@ export default function StreamingConsole() {
     }
 
     if (action === 'select-language') {
-      const locale = useSessionStore.getState().pendingSelectedLanguage;
-      session.clearPendingAction();
-      useSessionStore.setState({ pendingSelectedLanguage: null });
       if (!locale) return;
       const sLang = useSessionStore.getState().staffLanguage;
       useSessionStore.getState().setGuestLanguage(locale, 1.0, 'manual-override');
