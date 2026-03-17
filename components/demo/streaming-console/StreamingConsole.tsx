@@ -16,63 +16,38 @@ import { AVAILABLE_LANGUAGES } from '../../../lib/constants';
 import { createSession, endSession, saveTranslation } from '../../../lib/db';
 import { supabase } from '../../../lib/supabase';
 import { playTurnChime, playLanguageConfirmedChime, playSelectLanguageAudio, playMicOnChime, playLanguageSelectedChime } from '../../../lib/chime';
+import {
+  isNoiseMarker,
+  isEmptyOrEllipsis,
+  stripThinkingBlocks,
+  THINKING_ONLY_PATTERN,
+  THINKING_PREFIX_PATTERN,
+} from '../../../lib/text-utils';
 import SessionDisplay from '../welcome-screen/SessionDisplay';
-
-function isNoiseMarker(text: string): boolean {
-  const t = text.trim();
-  return /^<noise>$/i.test(t) || /^\[noise\]$/i.test(t) || /^\(noise\)$/i.test(t) || t.length < 2;
-}
-
-function isEmptyOrEllipsis(text: string): boolean {
-  const t = text.trim();
-  return !t || /^[.…\s]+$/i.test(t);
-}
 
 /** Strip model commentary (headers, reasoning, thinking) and return only the translation. */
 function stripTranslationCommentary(text: string): string {
-  let t = text.trim();
+  let t = stripThinkingBlocks(text).trim();
   if (!t || t.length < 3) return t;
-
-  // Remove <thinking>...</thinking> blocks (Gemini thinking mode)
-  t = t.replace(/<thinking>[\s\S]*?<\/thinking>/gi, '').trim();
-  t = t.replace(/<thought>[\s\S]*?<\/thought>/gi, '').trim();
-
-  // Drop paragraphs that are purely meta (standalone "Thinking", "Let me think", etc.)
-  const metaStart = /^(Thinking\.?|Let me think\.?|Translating|I've got it|I'm (now )?focusing|The goal is|my (task|current challenge)|After considering|Finding the right)/i;
-  const paragraphs = t.split(/\n\n+/).map((p) => p.trim()).filter(Boolean);
-  const nonMeta = paragraphs.filter(
-    (p) =>
-      !metaStart.test(p) &&
-      !/^\[?thinking\]?\.?$/i.test(p) &&
-      p.length > 2 &&
-      !/^(So|Thus|Therefore),?\s+[A-Z]/.test(p),
-  );
-  if (nonMeta.length > 0) t = nonMeta.join('\n\n');
-
-  // If text still looks like commentary, extract translation
-  if (
-    /\*\*|Translating|I've got it|I'm (now )?focusing|The goal is|my (task|current challenge)|After considering|Finding the right|^Thinking\.?$/im.test(t)
-  ) {
-    const paras = t.split(/\n\n+/).map((p) => p.trim()).filter(Boolean);
-    const translationCandidates = paras.filter(
-      (p) =>
-        p.length < 200 &&
-        !/^(I've|I'm|The|My|After|Finding|So|Thus|Therefore|Thinking|Let me)/i.test(p) &&
-        !/\*\*/.test(p),
-    );
-    if (translationCandidates.length > 0) {
-      return translationCandidates[translationCandidates.length - 1].trim();
-    }
-    const lastPara = paras[paras.length - 1];
-    if (lastPara && lastPara.length < 300 && !/\*\*/.test(lastPara)) return lastPara.trim();
-    t = t.replace(/\*\*[^*]+\*\*/g, '').trim();
-    const lines = t
-      .split(/\n/)
-      .filter((l) => l.length < 150 && !/^(I've|I'm|The|My|After|Finding|Thinking|Let me)/i.test(l));
-    return (lines[lines.length - 1] ?? t).trim();
+  if (THINKING_PREFIX_PATTERN.test(t)) return '';
+  if (!/\*\*|Translating|I've got it|I'm (now )?focusing|The goal is|my (task|current challenge)|After considering|Finding the right|Thinking|Let me think|Hmm/i.test(t)) {
+    return t;
   }
-
-  return t;
+  const paragraphs = t.split(/\n\n+/).map((p) => p.trim()).filter(Boolean);
+  const translationCandidates = paragraphs.filter(
+    (p) =>
+      p.length < 200 &&
+      !/^(I've|I'm|The|My|After|Finding|So|Thus|Therefore|Thinking|Let me|Hmm)/i.test(p) &&
+      !/\*\*/.test(p),
+  );
+  if (translationCandidates.length > 0) {
+    return translationCandidates[translationCandidates.length - 1].trim();
+  }
+  const lastPara = paragraphs[paragraphs.length - 1];
+  if (lastPara && lastPara.length < 300 && !/\*\*/.test(lastPara)) return lastPara.trim();
+  let out = t.replace(/\*\*[^*]+\*\*/g, '').trim();
+  const lines = out.split(/\n/).filter((l) => l.length < 150 && !/^(I've|I'm|The|My|After|Finding|Thinking|Let me|Hmm)/i.test(l));
+  return (lines[lines.length - 1] ?? out).trim();
 }
 
 function extractLanguageFromConfirm(text: string): string | null {
@@ -95,7 +70,7 @@ function extractLanguageFromConfirm(text: string): string | null {
 }
 
 export default function StreamingConsole() {
-  const { client, connectWithConfig, disconnect, connected, playTTS } = useLiveAPIContext();
+  const { client, connectWithConfig, disconnect, playTTS } = useLiveAPIContext();
   const { voice, topic } = useSettings();
   const session = useSessionStore();
   const { addHistoryItem } = useHistoryStore();
@@ -125,8 +100,9 @@ export default function StreamingConsole() {
         inputAudioTranscription: {},
         outputAudioTranscription: {},
         systemInstruction: { parts: [{ text: systemPrompt }] },
-        // Disable thinking mode to avoid reasoning in transcription (if supported)
-        thinkingConfig: { thinkingBudget: 0 },
+        generationConfig: {
+          thinkingConfig: { includeThoughts: false, thinkingBudget: 0 },
+        },
       }) as any,
     [voice],
   );
@@ -219,7 +195,7 @@ export default function StreamingConsole() {
         );
       }
     }
-  }, [session.pendingAction, client, connectWithConfig, buildConfig, session, disconnect, topic]);
+  }, [session.pendingAction, connectWithConfig, buildConfig, session, disconnect, topic]);
 
   useEffect(() => {
     const { addTurn, updateLastTurn } = useLogStore.getState();
@@ -252,7 +228,7 @@ export default function StreamingConsole() {
 
     const handleInputTranscription = (text: string, isFinal: boolean) => {
       const turns = useLogStore.getState().turns;
-      const last = turns[turns.length - 1];
+      const last = turns.at(-1);
 
       const phase = phaseRef.current;
       const gLang = guestLangRef.current;
@@ -350,7 +326,7 @@ export default function StreamingConsole() {
 
     const handleOutputTranscription = (text: string, isFinal: boolean) => {
       const turns = useLogStore.getState().turns;
-      const last = turns[turns.length - 1];
+      const last = turns.at(-1);
 
       const phase = phaseRef.current;
 
@@ -386,22 +362,25 @@ export default function StreamingConsole() {
 
       if (isNoiseMarker(text)) return;
 
-      // Skip pure thinking/meta in live phase (e.g. "Thinking", "Thinking...")
-      if (phaseRef.current === 'live' && /^thinking\.?\.*$/i.test(text.trim())) return;
+      let raw = text;
+      if (phaseRef.current === 'live') {
+        raw = stripThinkingBlocks(raw);
+        if (THINKING_ONLY_PATTERN.test(raw.trim())) return;
+      }
 
       let finalText = '';
       if (last && last.role === 'agent' && !last.isFinal) {
-        const separator = last.text.endsWith(' ') || text.startsWith(' ') ? '' : ' ';
-        finalText = last.text + separator + text;
-        if (phaseRef.current === 'live') {
+        const separator = last.text.endsWith(' ') || raw.startsWith(' ') ? '' : ' ';
+        finalText = last.text + separator + raw;
+        if (phaseRef.current === 'live' && isFinal) {
           finalText = stripTranslationCommentary(finalText.trim());
         }
         if (!isEmptyOrEllipsis(finalText)) {
           updateLastTurn({ text: finalText, isFinal });
         }
       } else {
-        finalText = text;
-        if (phaseRef.current === 'live') {
+        finalText = raw;
+        if (phaseRef.current === 'live' && isFinal) {
           finalText = stripTranslationCommentary(finalText.trim());
         }
         if (isEmptyOrEllipsis(finalText) && phaseRef.current === 'live') return;
@@ -420,7 +399,6 @@ export default function StreamingConsole() {
         if (prevSpeakerRef.current !== 'ai') {
           prevSpeakerRef.current = 'ai';
           ui.setActiveSpeaker('ai');
-          /* Skip chime when AI speaks - Live API audio plays translation, avoid double audio */
         }
       }
       if (phaseRef.current === 'live' && isFinal && finalText.trim() && !isEmptyOrEllipsis(finalText)) {
@@ -429,15 +407,17 @@ export default function StreamingConsole() {
     };
 
     const handleContent = (serverContent: LiveServerContent) => {
-      let text =
-        serverContent.modelTurn?.parts
-          ?.map((p: any) => p.text)
-          .filter(Boolean)
-          .join(' ') ?? '';
-      if (phaseRef.current === 'live' && text.trim()) {
+      const parts = serverContent.modelTurn?.parts ?? [];
+      const textParts = parts
+        .filter((p: any) => !p.thought && p.text)
+        .map((p: any) => p.text)
+        .filter(Boolean);
+      let text = textParts.join(' ');
+      text = stripThinkingBlocks(text);
+      if (phaseRef.current === 'live' && THINKING_ONLY_PATTERN.test(text.trim())) return;
+      if (phaseRef.current === 'live' && text.includes('\n\n') && text.trim().length > 80) {
         const stripped = stripTranslationCommentary(text.trim());
         if (stripped && !isEmptyOrEllipsis(stripped)) text = stripped;
-        else if (isEmptyOrEllipsis(stripped) || /^thinking\.?$/i.test(stripped)) return;
       }
       if (isNoiseMarker(text) || (phaseRef.current === 'live' && isEmptyOrEllipsis(text))) return;
       const groundingChunks = serverContent.groundingMetadata?.groundingChunks as any;
@@ -474,7 +454,6 @@ export default function StreamingConsole() {
         if (prevSpeakerRef.current !== 'ai') {
           prevSpeakerRef.current = 'ai';
           ui.setActiveSpeaker('ai');
-          /* Skip chime when AI speaks - Live API audio plays translation, avoid double audio */
         }
       }
     };

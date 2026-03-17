@@ -42,21 +42,6 @@ export function playTurnChime(): void {
   createChime([880, 1318, 1760], [0.25, 0.18, 0.15], 0.09, 'sine');
 }
 
-/** Announce guest language aloud via speech synthesis */
-export function announceGuestLanguage(languageName: string): void {
-  try {
-    if (typeof window === 'undefined' || !window.speechSynthesis) return;
-    window.speechSynthesis.cancel();
-    const utterance = new SpeechSynthesisUtterance(`Guest language set to ${languageName}`);
-    utterance.rate = 0.9;
-    utterance.volume = 1;
-    utterance.lang = 'en-US';
-    window.speechSynthesis.speak(utterance);
-  } catch {
-    // ignore
-  }
-}
-
 /** Play select-language.mp3 when Start is tapped (fallback to play.mp3 if missing) */
 export function playSelectLanguageAudio(): void {
   try {

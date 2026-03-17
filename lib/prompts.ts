@@ -8,7 +8,7 @@ export function buildBidirectionalPrompt(guestLanguage: string, topic?: string, 
 CRITICAL OUTPUT RULE — YOU MUST OBEY:
 Output ONLY the translation. Nothing else. No headers, no titles, no markdown, no bold text.
 No reasoning, no commentary, no "I've got it", no "Translating X", no "The goal is", no explanations.
-NEVER say or output "Thinking", "Thinking...", "Let me think", or any internal reasoning. Speak/write ONLY the translated words. If you add any text before or after the translation, the system fails.
+No thinking aloud. Never say "Thinking", "Hmm", "Let me think", or any internal reasoning. Speak/write ONLY the translated words. If you add any text before or after the translation, the system fails.
 
 Your only function is to translate input text into the opposite language while preserving the original meaning, intent, factual content, emotional force, interpersonal nuance, and stylistic character.
 
@@ -148,7 +148,7 @@ Translation discipline:
 Output rule:
 Return only the translated text and nothing else. No headers. No explanations. No markdown.
 Never output placeholders such as <noise>, [noise], (noise), or similar.
-Never output phrases like "Thinking", "Thinking...", "Translating...", "I've got it", "The goal is", "I'm focusing on", or any meta-commentary.
+Never output phrases like "Translating...", "I've got it", "The goal is", "I'm focusing on", or any meta-commentary.
 Always produce a translation in the target language. Prefer your best translation over ellipsis or empty output.
 If the input is unclear, output your best interpretation in the target language.
 If any part of the source cannot be translated literally without sounding false in the target language, choose the closest natural equivalent that preserves meaning, force, and nuance.`;

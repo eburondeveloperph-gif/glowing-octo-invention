@@ -2,6 +2,7 @@ import React, { useMemo, useRef, useEffect, useState } from 'react';
 import cn from 'classnames';
 import './SessionDisplay.css';
 import { useSessionStore, useLogStore, useUI, ConversationTurn } from '../../../lib/state';
+import { isNoise, isEmptyOrEllipsis } from '../../../lib/text-utils';
 import LanguageRoulette from './LanguageRoulette';
 
 function playChime() {
@@ -40,13 +41,6 @@ interface ConvRecord {
   key: number;
 }
 
-function isNoise(text: string): boolean {
-  const t = text.trim();
-  if (/^<noise>$/i.test(t) || /^\[noise\]$/i.test(t) || /^\(noise\)$/i.test(t)) return true;
-  if (t.replace(/[.\s,!?;:'"()\-–—…]/g, '').length < 2) return true;
-  return false;
-}
-
 function buildRecords(turns: ConversationTurn[], staffLang: string, guestLang: string | null): ConvRecord[] {
   const records: ConvRecord[] = [];
   for (let i = 0; i < turns.length; i++) {
@@ -62,12 +56,10 @@ function buildRecords(turns: ConversationTurn[], staffLang: string, guestLang: s
     }
 
     if (agent?.text?.trim().match(/^Confirm for /i)) continue;
-    if (/^thinking\.?\.*$/i.test(agent?.text?.trim() ?? '')) continue;
     if (t.text.trim().length < 3) continue;
 
     const rawStaff = speaker === 'staff' ? t.text.trim() : (agent?.text?.trim() ?? '');
     const rawGuest = speaker === 'guest' ? t.text.trim() : (agent?.text?.trim() ?? '');
-    const isEmptyOrEllipsis = (s: string) => !s || /^[.…\s]+$/i.test(s);
     if (isEmptyOrEllipsis(rawStaff) && isEmptyOrEllipsis(rawGuest)) continue;
     const staffLangText = isEmptyOrEllipsis(rawStaff) ? '' : rawStaff;
     const guestLangText = isEmptyOrEllipsis(rawGuest) ? '' : rawGuest;
@@ -224,7 +216,6 @@ const SessionDisplay: React.FC = () => {
 
       {showRoulette && <LanguageRoulette />}
 
-      {/* Two-panel conversation —      (left),    (right) */}
       {showConversationArea && (
         <div className={cn('conversation-area', { 'has-records': records.length > 0 })}>
           <div className="conversation-side staff-side">
@@ -247,7 +238,7 @@ const SessionDisplay: React.FC = () => {
                       </p>
                       {sourceText !== transText && transText && (
                         <p className="conv-trans">
-                          <span className="conv-trans-label">{isStaff ? 'Translation:' : 'Translation:'}</span>{' '}
+                          <span className="conv-trans-label">Translation:</span>{' '}
                           {transText}
                           {r.isStreaming && <span className="transcript-cursor" />}
                         </p>
@@ -281,7 +272,7 @@ const SessionDisplay: React.FC = () => {
                       </p>
                       {sourceText !== transText && transText && (
                         <p className="conv-trans">
-                          <span className="conv-trans-label">{isGuest ? 'Translation:' : 'Translation:'}</span>{' '}
+                          <span className="conv-trans-label">Translation:</span>{' '}
                           {transText}
                           {r.isStreaming && <span className="transcript-cursor" />}
                         </p>

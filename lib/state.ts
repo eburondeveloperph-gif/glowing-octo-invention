@@ -1,11 +1,6 @@
 import { create } from 'zustand';
 import { DEFAULT_LIVE_API_MODEL, DEFAULT_VOICE, STAFF_LANGUAGE } from './constants';
-import {
-  FunctionDeclaration,
-  FunctionResponse,
-  FunctionResponseScheduling,
-  LiveServerToolCall,
-} from '@google/genai';
+import { FunctionResponse, LiveServerToolCall } from '@google/genai';
 
 // ---------------------------------------------------------------------------
 // Session state machine
@@ -155,14 +150,6 @@ export const useUI = create<{
 // ---------------------------------------------------------------------------
 // Conversation turns log
 // ---------------------------------------------------------------------------
-
-export interface FunctionCall {
-  name: string;
-  description: string;
-  parameters: any;
-  isEnabled: boolean;
-  scheduling: FunctionResponseScheduling;
-}
 
 export interface LiveClientToolResponse {
   functionResponses?: FunctionResponse[];
