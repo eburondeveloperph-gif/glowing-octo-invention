@@ -145,6 +145,7 @@ export default function StreamingConsole() {
       useSessionStore.getState().setPhase('live');
       detectionBufferRef.current = '';
       pendingLanguageRef.current = null;
+      useLogStore.getState().clearTurns();
       const prompt = buildBidirectionalPrompt(locale, topic, sLang);
       disconnect();
       connectWithConfig(buildConfig(prompt)).catch(() =>

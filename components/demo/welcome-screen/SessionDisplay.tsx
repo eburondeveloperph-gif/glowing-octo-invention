@@ -2,7 +2,6 @@ import React, { useMemo, useRef, useEffect, useState } from 'react';
 import cn from 'classnames';
 import './SessionDisplay.css';
 import { useSessionStore, useLogStore, useUI, ConversationTurn } from '../../../lib/state';
-import { whichLanguage } from '../../../lib/language-detection';
 
 function playChime() {
   const ctx = new AudioContext();
@@ -49,24 +48,23 @@ function buildRecords(turns: ConversationTurn[], staffLang: string, guestLang: s
   for (let i = 0; i < turns.length; i++) {
     const t = turns[i];
     if (t.role !== 'user' || isNoise(t.text)) continue;
+    if (t.speakerRole !== 'staff' && t.speakerRole !== 'guest') continue;
 
+    const speaker = t.speakerRole;
     let agent: ConversationTurn | undefined;
     for (let j = i + 1; j < turns.length; j++) {
       if (turns[j].role === 'agent') { agent = turns[j]; break; }
       if (turns[j].role === 'user') break;
     }
-    if (!agent || !agent.text || isNoise(agent.text)) continue;
 
-    const agentLang = guestLang ? whichLanguage(agent.text, staffLang, guestLang) : null;
-    const agentIsStaffLang = agentLang === 'a';
-
-    const speaker: 'staff' | 'guest' = agentIsStaffLang ? 'guest' : 'staff';
+    const staffLangText = speaker === 'staff' ? t.text.trim() : (agent?.text?.trim() ?? '');
+    const guestLangText = speaker === 'guest' ? t.text.trim() : (agent?.text?.trim() ?? '');
 
     records.push({
       speaker,
-      staffLangText: agentIsStaffLang ? agent.text.trim() : t.text.trim(),
-      guestLangText: agentIsStaffLang ? t.text.trim() : agent.text.trim(),
-      isStreaming: !agent.isFinal,
+      staffLangText: staffLangText || '…',
+      guestLangText: guestLangText || '…',
+      isStreaming: agent ? !agent.isFinal : true,
       key: i,
     });
   }
@@ -101,6 +99,8 @@ const SessionDisplay: React.FC = () => {
     [turns, session.staffLanguage, session.guestLanguage],
   );
   const hasConversation = isActive && records.length > 0;
+  const isLive = session.sessionPhase === 'live';
+  const showConversationArea = isLive || hasConversation;
   const showIntroText = isActive && !hasConversation && isDetecting && !introComplete;
 
   const staffScrollRef = useRef<HTMLDivElement>(null);
@@ -170,9 +170,9 @@ const SessionDisplay: React.FC = () => {
     : undefined;
 
   return (
-    <div className={cn('center-stage-content', { 'has-conversation': hasConversation })}>
-      {/* Orb — center idle, mini header once intro done or conversation active */}
-      <div className={cn('orb-wrapper', { mini: isActive && (hasConversation || introComplete) })}>
+    <div className={cn('center-stage-content', { 'has-conversation': showConversationArea })}>
+      {/* Orb — center idle, mini header once in live or has conversation */}
+      <div className={cn('orb-wrapper', { mini: isActive && (showConversationArea || introComplete) })}>
         <div className={cn('orb-container', { error: isError })} onClick={handleOrbClick}
           style={orbGlow ? { boxShadow: orbGlow } : undefined}>
           <div className="orb-grid" />
@@ -194,22 +194,26 @@ const SessionDisplay: React.FC = () => {
         </p>
       )}
 
-      {/* Two-panel conversation — every record renders on BOTH sides */}
-      {hasConversation && (
-        <div className="conversation-area">
+      {/* Two-panel conversation — staff side (left), guest side (right) */}
+      {showConversationArea && (
+        <div className={cn('conversation-area', { 'has-records': records.length > 0 })}>
           <div className="conversation-side staff-side">
             <div className="conv-scroll" ref={staffScrollRef}>
-              {records.map((r) => (
-                <div className={cn('conv-card', r.speaker === 'staff' ? 'own-card' : 'other-card')} key={r.key}>
-                  <p className="conv-text">
-                    <strong className="conv-tag">{r.speaker === 'staff' ? 'Staff:' : 'Guest:'}</strong> {r.staffLangText}
-                  </p>
-                  <p className="conv-trans">
-                    <span className="conv-trans-label">↳</span> {r.guestLangText}
-                    {r.isStreaming && <span className="transcript-cursor" />}
-                  </p>
-                </div>
-              ))}
+              {records.length === 0 ? (
+                <p className="conv-empty">Staff: speak to translate</p>
+              ) : (
+                records.map((r) => (
+                  <div className={cn('conv-card', r.speaker === 'staff' ? 'own-card' : 'other-card')} key={r.key}>
+                    <p className="conv-text">
+                      <strong className="conv-tag">{r.speaker === 'staff' ? 'Staff:' : 'Guest:'}</strong> {r.staffLangText}
+                    </p>
+                    <p className="conv-trans">
+                      <span className="conv-trans-label">↳</span> {r.guestLangText}
+                      {r.isStreaming && <span className="transcript-cursor" />}
+                    </p>
+                  </div>
+                ))
+              )}
             </div>
           </div>
 
@@ -217,17 +221,21 @@ const SessionDisplay: React.FC = () => {
 
           <div className="conversation-side guest-side">
             <div className="conv-scroll" ref={guestScrollRef}>
-              {records.map((r) => (
-                <div className={cn('conv-card', r.speaker === 'guest' ? 'own-card' : 'other-card')} key={r.key}>
-                  <p className="conv-text">
-                    <strong className="conv-tag">{r.speaker === 'staff' ? 'Staff:' : 'Guest:'}</strong> {r.guestLangText}
-                  </p>
-                  <p className="conv-trans">
-                    <span className="conv-trans-label">↳</span> {r.staffLangText}
-                    {r.isStreaming && <span className="transcript-cursor" />}
-                  </p>
-                </div>
-              ))}
+              {records.length === 0 ? (
+                <p className="conv-empty">Guest: speak to translate</p>
+              ) : (
+                records.map((r) => (
+                  <div className={cn('conv-card', r.speaker === 'guest' ? 'own-card' : 'other-card')} key={r.key}>
+                    <p className="conv-text">
+                      <strong className="conv-tag">{r.speaker === 'staff' ? 'Staff:' : 'Guest:'}</strong> {r.guestLangText}
+                    </p>
+                    <p className="conv-trans">
+                      <span className="conv-trans-label">↳</span> {r.staffLangText}
+                      {r.isStreaming && <span className="transcript-cursor" />}
+                    </p>
+                  </div>
+                ))
+              )}
             </div>
           </div>
         </div>

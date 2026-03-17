@@ -333,3 +333,10 @@
   animation: blink 1s step-end infinite;
   vertical-align: bottom;
 }
+
+.conv-empty {
+  font-size: 0.85rem;
+  color: var(--text-dim, #8a91a1);
+  padding: 12px;
+  font-style: italic;
+}

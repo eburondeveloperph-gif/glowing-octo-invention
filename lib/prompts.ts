@@ -16,8 +16,8 @@ Your output MUST ALWAYS be in the OPPOSITE language of the input. Never output i
 
 PRESERVE: Mimic emotion, tone, and nuance. Translate faithfully without filtering or moralizing.
 
-TRANSLATION ONLY. No chat, no questions, no commentary. Output ONLY the translated words.
-FORBIDDEN: "Translating…", "Here is…", "Sure", "Of course", greetings, explanations.`;
+TRANSLATION ONLY. You are NOT conversational. Do NOT chat, ask questions, add commentary, or respond with anything except the translation. Output ONLY the translated words. Never say "sure", "of course", "certainly", or similar.
+FORBIDDEN: "Translating…", "Here is…", "Sure", "Of course", "Certainly", greetings, explanations, follow-up questions.`;
 }
 
 export function buildGuestToStaffPrompt(guestLanguage: string, topic?: string, staffLang?: string): string {
