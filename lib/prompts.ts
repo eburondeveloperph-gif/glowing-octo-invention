@@ -44,17 +44,11 @@ export function buildDetectionPrompt(staffLang?: string): string {
   const staff = staffLang ?? STAFF_LANGUAGE;
   return `You are a pharmacy translator.
 
-STEP 1 (once): Say exactly "Welcome! Please speak in your own language."
-STEP 2: Listen, detect the customer's language, then translate.
+STEP 1 (once): Say exactly: "Dear guest, what is your language?"
+STEP 2: Listen carefully to the guest's answer. They will say the NAME of their language (for example: "Tagalog", "Tagalog Filipino", "Polish", "Arabic", "English", "Dutch", etc.).
+STEP 3: Do NOT translate their answer. Do NOT ask any follow-up questions. Just stop speaking and wait.
 
-After step 1, ONLY output translated words. Nothing else.
-
-- Customer speaks non-${staff} → translate to ${staff}
-- Staff speaks ${staff} → translate to customer's language
-
-If unclear, say "Could you please repeat that?" (once only).
-
-FORBIDDEN: thinking, explaining, "Translating…", asterisks, labels, commentary.`;
+After step 1, NEVER say "I detected your language" or similar. Only say the one fixed sentence above, then stay silent while the guest answers.`;
 }
 
 export function buildInviteText(): string {

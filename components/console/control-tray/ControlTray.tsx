@@ -176,7 +176,7 @@ function ControlTray({ children }: ControlTrayProps) {
   };
 
   const handleMicToggle = () => {
-    if (connected) setMuted(!muted);
+    if (connected && !ttsPlayingRef.current) setMuted(!muted);
   };
 
   return (
@@ -215,15 +215,20 @@ function ControlTray({ children }: ControlTrayProps) {
           <button
             className={cn('center-mic-btn', {
               muted: connected && muted,
-              listening: connected && !muted && (activeSpeaker === 'staff' || activeSpeaker === 'guest'),
+              listening:
+                connected &&
+                !muted &&
+                !ttsPlayingRef.current &&
+                (activeSpeaker === 'staff' || activeSpeaker === 'guest'),
               'mic-active':
                 connected &&
                 !muted &&
+                !ttsPlayingRef.current &&
                 (activeSpeaker === 'staff' || activeSpeaker === 'guest') &&
                 useUI.getState().micVolume > 0.05,
             })}
             onClick={handleMicToggle}
-            disabled={!connected}
+            disabled={!connected || ttsPlayingRef.current}
             aria-label={muted ? 'Unmute microphone' : 'Mute microphone'}
           >
             <svg viewBox="0 0 24 24">

@@ -11,12 +11,8 @@ import {
 } from '../../../lib/state';
 import { useHistoryStore } from '../../../lib/history';
 import { buildDetectionPrompt, buildBidirectionalPrompt } from '../../../lib/prompts';
-import {
-  detectLanguageFromText,
-  inferTurnDirection,
-  isStaffLanguage,
-} from '../../../lib/language-detection';
-import { MIN_DETECTION_CONFIDENCE } from '../../../lib/constants';
+import { inferTurnDirection } from '../../../lib/language-detection';
+import { AVAILABLE_LANGUAGES } from '../../../lib/constants';
 import { createSession, endSession, saveTranslation } from '../../../lib/db';
 import { supabase } from '../../../lib/supabase';
 import SessionDisplay from '../welcome-screen/SessionDisplay';
@@ -38,7 +34,6 @@ export default function StreamingConsole() {
   const staffLangRef = useRef(session.staffLanguage);
   staffLangRef.current = session.staffLanguage;
 
-  const introPlayedRef = useRef(false);
   const prevSpeakerRef = useRef<'staff' | 'guest' | 'ai' | 'none'>('none');
 
   function playTurnChime() {
@@ -77,53 +72,6 @@ export default function StreamingConsole() {
     [voice],
   );
 
-  const introFrameRef = useRef<number>(0);
-
-  // Play intro audio instantly on Start; visualize on the orb via AnalyserNode
-  useEffect(() => {
-    const phase = session.sessionPhase;
-
-    if (phase !== 'idle' && phase !== 'error' && !introPlayedRef.current) {
-      introPlayedRef.current = true;
-      useUI.getState().setIntroComplete(false);
-
-      const audioCtx = new AudioContext();
-      const audio = new Audio('/play.mp3');
-      audio.crossOrigin = 'anonymous';
-      const source = audioCtx.createMediaElementSource(audio);
-      const analyser = audioCtx.createAnalyser();
-      analyser.fftSize = 256;
-      source.connect(analyser);
-      analyser.connect(audioCtx.destination);
-
-      const buf = new Uint8Array(analyser.frequencyBinCount);
-      const measure = () => {
-        analyser.getByteFrequencyData(buf);
-        const avg = buf.reduce((a, b) => a + b, 0) / buf.length;
-        useUI.getState().setIntroVolume(avg / 255);
-        introFrameRef.current = requestAnimationFrame(measure);
-      };
-
-      const cleanup = () => {
-        cancelAnimationFrame(introFrameRef.current);
-        useUI.getState().setIntroVolume(0);
-        useUI.getState().setIntroComplete(true);
-        audioCtx.close().catch(() => {});
-      };
-
-      audio.addEventListener('ended', cleanup);
-      audio.addEventListener('error', cleanup);
-      audio.play().then(measure).catch(cleanup);
-    }
-
-    if (phase === 'idle') {
-      introPlayedRef.current = false;
-      cancelAnimationFrame(introFrameRef.current);
-      useUI.getState().setIntroVolume(0);
-      useUI.getState().setIntroComplete(false);
-    }
-  }, [session.sessionPhase]);
-
   useEffect(() => {
     const action = session.pendingAction;
     if (!action) return;
@@ -134,6 +82,9 @@ export default function StreamingConsole() {
       welcomeCompletedRef.current = false;
       useLogStore.getState().clearTurns();
       session.setPhase('prompting');
+      // No more intro.mp3 – mark intro complete immediately so mic can open
+      useUI.getState().setIntroComplete(true);
+      useUI.getState().setIntroVolume(0);
 
       supabase.auth.getUser().then(({ data }) => {
         if (data.user) {
@@ -153,6 +104,8 @@ export default function StreamingConsole() {
 
     if (action === 'stop') {
       useUI.getState().setActiveSpeaker('none');
+      useUI.getState().setIntroComplete(false);
+      useUI.getState().setIntroVolume(0);
 
       const dbSid = useUI.getState().dbSessionId;
       if (dbSid) {
@@ -215,16 +168,35 @@ export default function StreamingConsole() {
       }
 
       if (!gLang && (phase === 'detecting' || (phase === 'prompting' && welcomeCompletedRef.current))) {
+        // First guest answer should be a language name. Accumulate until final,
+        // then map to one of our AVAILABLE_LANGUAGES and commit.
         detectionBufferRef.current += ' ' + text;
         const trimmed = detectionBufferRef.current.trim();
         useSessionStore.getState().setLastDetectedTranscript(trimmed);
 
-        const sLang = staffLangRef.current;
-        const result = detectLanguageFromText(trimmed);
+        if (!isFinal) return;
 
-        if (result && !isStaffLanguage(result.normalizedLocale, sLang) && result.confidence >= MIN_DETECTION_CONFIDENCE) {
-          commitLanguage(result.normalizedLocale, result.confidence);
-          return;
+        const answer = trimmed.toLowerCase();
+        let matched: string | null = null;
+
+        for (const lang of AVAILABLE_LANGUAGES) {
+          const name = lang.name.toLowerCase();
+          const value = lang.value.toLowerCase();
+          if (
+            answer === name ||
+            answer === value ||
+            answer.includes(name) ||
+            answer.includes(value) ||
+            name.includes(answer) ||
+            value.includes(answer)
+          ) {
+            matched = lang.value;
+            break;
+          }
+        }
+
+        if (matched) {
+          commitLanguage(matched, 1.0);
         }
         return;
       }
