@@ -54,6 +54,13 @@
   z-index: 12;
 }
 
+.orb-wrapper.orb-mini-roulette {
+  top: 55px;
+  left: 50%;
+  transform: translate(-50%, -50%) scale(0.45);
+  z-index: 12;
+}
+
 .orb-wrapper.mini .orb-container {
   width: 44px;
   height: 44px;
@@ -236,12 +243,14 @@
 .conv-scroll {
   flex: 1;
   overflow-y: auto;
+  overflow-x: hidden;
   padding: 12px 14px;
   display: flex;
   flex-direction: column;
   gap: 10px;
   scrollbar-width: thin;
   scrollbar-color: rgba(255,255,255,0.06) transparent;
+  min-height: 0;
 }
 
 .conv-scroll::-webkit-scrollbar { width: 3px; }
@@ -297,20 +306,26 @@
 }
 
 .conv-text {
-  font-size: 0.92rem;
+  font-size: 1.84rem;
   line-height: 1.55;
   color: var(--text-main, #fff);
   white-space: pre-wrap;
   word-wrap: break-word;
+  overflow-wrap: break-word;
+  overflow: visible;
+  min-height: 1.5em;
 }
 
 .conv-trans {
   margin-top: 4px;
-  font-size: 0.75rem;
+  font-size: 1.5rem;
   line-height: 1.4;
   color: rgba(0, 200, 255, 0.55);
   white-space: pre-wrap;
   word-wrap: break-word;
+  overflow-wrap: break-word;
+  overflow: visible;
+  min-height: 1.4em;
   font-style: italic;
 }
 

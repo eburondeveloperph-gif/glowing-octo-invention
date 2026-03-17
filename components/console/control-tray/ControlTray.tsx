@@ -47,6 +47,8 @@ function ControlTray({ children }: ControlTrayProps) {
   const isIdle = session.sessionPhase === 'idle';
   const isError = session.sessionPhase === 'error';
   const isActive = !isIdle && !isError;
+  const isListening =
+    session.sessionPhase === 'live' && !!session.guestLanguage;
 
   useEffect(() => { setTtsVolume(ttsVolumeRaw); }, [ttsVolumeRaw, setTtsVolume]);
 
@@ -65,7 +67,7 @@ function ControlTray({ children }: ControlTrayProps) {
         ttsGraceRef.current = setTimeout(() => {
           ttsPlayingRef.current = false;
           ttsGraceRef.current = null;
-        }, 800);
+        }, 2000);
       }
     }
   }, [ttsVolumeRaw]);
@@ -75,14 +77,18 @@ function ControlTray({ children }: ControlTrayProps) {
       setMuted(false);
       setMicVolume(0);
       ttsPlayingRef.current = false;
+      useUI.getState().setAwaitingAiResponse(false);
     }
   }, [connected, setMicVolume]);
+
+  const awaitingAiResponse = useUI((s) => s.awaitingAiResponse);
 
   useEffect(() => {
     const onData = (base64: string) => {
       const ui = useUI.getState();
       if (!ui.introComplete) return;
       if (ttsPlayingRef.current) return;
+      if (ui.awaitingAiResponse) return;
       client.sendRealtimeInput([
         { mimeType: 'audio/pcm;rate=16000', data: base64 },
       ]);
@@ -101,7 +107,7 @@ function ControlTray({ children }: ControlTrayProps) {
       audioRecorder.off('data', onData);
       audioRecorder.off('volume', onVolume);
     };
-  }, [connected, client, muted, audioRecorder, setMicVolume]);
+  }, [connected, client, muted, audioRecorder, setMicVolume, awaitingAiResponse]);
 
   // --- Background audio recording ---
   const recorderRef = useRef<MediaRecorder | null>(null);
@@ -212,18 +218,24 @@ function ControlTray({ children }: ControlTrayProps) {
             </svg>
           </button>
 
-          {/* Center mic button — green active + visualizers, red disabled with slash */}
+          {/* Center mic button — red listening (15% bigger, breathing) when guest language locked */}
           <button
             className={cn('center-mic-btn', {
-              active: connected && !muted && ttsVolume <= 0.01,
-              disabled: !connected || muted || ttsVolume > 0.01,
+              listening: isListening,
+              active:
+                isListening &&
+                connected &&
+                !muted &&
+                ttsVolume <= 0.01 &&
+                !awaitingAiResponse,
+              disabled: !connected || muted || ttsVolume > 0.01 || awaitingAiResponse,
             })}
             onClick={handleMicToggle}
-            disabled={!connected || ttsVolume > 0.01}
+            disabled={!connected || ttsVolume > 0.01 || awaitingAiResponse}
             aria-label={muted ? 'Unmute microphone' : 'Mute microphone'}
           >
             <span className="mic-btn-inner">
-              {connected && !muted && ttsVolume <= 0.01 && micVolume > 0.05 && (
+              {connected && !muted && ttsVolume <= 0.01 && !awaitingAiResponse && micVolume > 0.05 && (
                 <span className="mic-visualizer" aria-hidden>
                   {[0, 1, 2, 3, 4].map((i) => (
                     <span
@@ -238,12 +250,12 @@ function ControlTray({ children }: ControlTrayProps) {
                 </span>
               )}
               <svg viewBox="0 0 24 24" className="mic-icon">
-                {!connected || muted || ttsVolume > 0.01 ? (
-                  /* Red disabled: mic with diagonal slash */
-                  <path d="M19 11h-1.7c0 .74-.16 1.43-.43 2.05l1.23 1.23c.56-.98.9-2.09.9-3.28zm-4.02.17c0-.06.02-.11.02-.17V5c0-1.66-1.34-3-3-3S9 3.34 9 5v.18l5.98 5.99zM4.27 3L3 4.27l6.01 6.01V11c0 1.66 1.33 3 2.99 3 .22 0 .44-.03.65-.08l1.66 1.66c-.71.33-1.5.52-2.31.52-2.76 0-5.3-2.1-5.3-5.1H5c0 3.41 2.72 6.23 6 6.72V21h2v-3.28c.91-.13 1.77-.45 2.54-.9L19.73 21 21 19.73 4.27 3z" />
-                ) : (
-                  /* Green active: mic only */
+                {isListening ? (
+                  /* Red listening: mic ready, waiting for guest to speak */
                   <path d="M12 14c1.66 0 3-1.34 3-3V5c0-1.66-1.34-3-3-3S9 3.34 9 5v6c0 1.66 1.34 3 3 3zm5-3c0 2.76-2.24 5-5 5s-5-2.24-5-5H5c0 3.53 2.61 6.43 6 6.92V21h2v-3.08c3.39-.49 6-3.39 6-6.92h-2z" />
+                ) : (
+                  /* Disabled: mic with diagonal slash */
+                  <path d="M19 11h-1.7c0 .74-.16 1.43-.43 2.05l1.23 1.23c.56-.98.9-2.09.9-3.28zm-4.02.17c0-.06.02-.11.02-.17V5c0-1.66-1.34-3-3-3S9 3.34 9 5v.18l5.98 5.99zM4.27 3L3 4.27l6.01 6.01V11c0 1.66 1.33 3 2.99 3 .22 0 .44-.03.65-.08l1.66 1.66c-.71.33-1.5.52-2.31.52-2.76 0-5.3-2.1-5.3-5.1H5c0 3.41 2.72 6.23 6 6.72V21h2v-3.28c.91-.13 1.77-.45 2.54-.9L19.73 21 21 19.73 4.27 3z" />
                 )}
               </svg>
             </span>

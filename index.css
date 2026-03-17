@@ -175,6 +175,11 @@ button[disabled] { opacity: 0.5; cursor: not-allowed; }
   color: var(--blue-glow-light);
 }
 
+.lang-chip-pending {
+  font-weight: 500;
+  opacity: 0.95;
+}
+
 .lang-chip-loading {
   display: inline-flex;
   align-items: center;
@@ -196,6 +201,7 @@ button[disabled] { opacity: 0.5; cursor: not-allowed; }
 
 .lang-chip.confirmed {
   color: var(--blue-glow-light);
+  font-weight: 600;
   box-shadow: 0 0 12px 2px rgba(0, 212, 255, 0.4);
   animation: lang-confirmed 1.5s ease-out;
 }
@@ -304,10 +310,25 @@ button[disabled] { opacity: 0.5; cursor: not-allowed; }
   position: relative;
 }
 
-/* Active: green circle, white mic */
+/* Listening: red circle, 15% bigger, breathing — when guest language locked, waiting for speech */
+.center-mic-btn.listening {
+  background: linear-gradient(180deg, #ef4444, #b91c1c);
+  box-shadow: 0 2px 12px rgba(239, 68, 68, 0.5);
+  transform: scale(1.15);
+  animation: mic-breathing 1.5s ease-in-out infinite alternate;
+}
+
+/* Active: same as listening when mic is live and ready to send */
 .center-mic-btn.active {
-  background: #22c55e;
-  box-shadow: 0 2px 12px rgba(34, 197, 94, 0.5);
+  background: linear-gradient(180deg, #ef4444, #b91c1c);
+  box-shadow: 0 2px 12px rgba(239, 68, 68, 0.5);
+  transform: scale(1.15);
+  animation: mic-breathing 1.5s ease-in-out infinite alternate;
+}
+
+@keyframes mic-breathing {
+  0%, 100% { transform: scale(1.15); box-shadow: 0 0 10px 2px rgba(239, 68, 68, 0.4); }
+  50% { transform: scale(1.22); box-shadow: 0 0 25px 8px rgba(239, 68, 68, 0.7); }
 }
 
 /* Disabled: red circle, white mic with slash */
@@ -320,7 +341,9 @@ button[disabled] { opacity: 0.5; cursor: not-allowed; }
   background: #ef4444;
 }
 
-.center-mic-btn:active { transform: scale(0.95); }
+.center-mic-btn:not(.listening):not(.active):active { transform: scale(0.95); }
+.center-mic-btn.listening:active,
+.center-mic-btn.active:active { transform: scale(1.08); animation: none; }
 
 .center-mic-btn[disabled] {
   opacity: 0.7;

@@ -17,19 +17,22 @@ describe('buildBidirectionalPrompt', () => {
 
   it('includes translation-only rules', () => {
     const prompt = buildBidirectionalPrompt('Arabic');
-    expect(prompt).toContain('ONLY the translated words');
-    expect(prompt).toContain('TRANSLATION ONLY');
+    expect(prompt).toContain('Output translated text only');
+    expect(prompt).toContain('No labels');
+    expect(prompt).toContain('No explanations');
   });
 
-  it('includes topic when provided', () => {
-    const prompt = buildBidirectionalPrompt('Turkish', 'Medication dispensing');
-    expect(prompt).toContain('Medication dispensing');
+  it('includes role-based translation directions', () => {
+    const prompt = buildBidirectionalPrompt('Turkish');
+    expect(prompt).toContain('staff');
+    expect(prompt).toContain('guest');
+    expect(prompt).toContain('translate into');
   });
 
-  it('includes emotion and nuance preservation', () => {
+  it('preserves meaning and tone', () => {
     const prompt = buildBidirectionalPrompt('Spanish');
-    expect(prompt).toContain('emotion');
-    expect(prompt).toContain('nuance');
+    expect(prompt).toContain('Preserve meaning');
+    expect(prompt).toContain('tone');
   });
 });
 
