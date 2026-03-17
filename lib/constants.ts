@@ -5,7 +5,7 @@ export const DEFAULT_VOICE = 'Charon';
 
 export const STAFF_LANGUAGE = 'Dutch (Flemish)';
 export const STAFF_LANGUAGE_NATIVE = 'Nederlands (Vlaams)';
-export const MIN_DETECTION_CONFIDENCE = 0.15;
+export const MIN_DETECTION_CONFIDENCE = 0.4;
 export const DETECTION_TIMEOUT_MS = 30_000;
 
 export const AVAILABLE_VOICES: { name: string; value: string }[] = [
