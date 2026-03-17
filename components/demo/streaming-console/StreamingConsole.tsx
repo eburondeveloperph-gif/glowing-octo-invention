@@ -15,8 +15,27 @@ import { inferTurnDirection } from '../../../lib/language-detection';
 import { AVAILABLE_LANGUAGES } from '../../../lib/constants';
 import { createSession, endSession, saveTranslation } from '../../../lib/db';
 import { supabase } from '../../../lib/supabase';
-import { playTurnChime, playLanguageConfirmedChime } from '../../../lib/chime';
+import { playTurnChime, playLanguageConfirmedChime, announceGuestLanguage, playSelectLanguageAudio, playMicOnChime, playLanguageSelectedChime } from '../../../lib/chime';
 import SessionDisplay from '../welcome-screen/SessionDisplay';
+
+function extractLanguageFromConfirm(text: string): string | null {
+  const m = text.match(/Confirm\s+for\s+(.+?)(?:\.|$)/i);
+  if (!m) return null;
+  const said = m[1].trim();
+  for (const lang of AVAILABLE_LANGUAGES) {
+    if (
+      lang.name.toLowerCase() === said.toLowerCase() ||
+      lang.value.toLowerCase() === said.toLowerCase() ||
+      lang.name.toLowerCase().includes(said.toLowerCase()) ||
+      lang.value.toLowerCase().includes(said.toLowerCase()) ||
+      said.toLowerCase().includes(lang.name.toLowerCase()) ||
+      said.toLowerCase().includes(lang.value.toLowerCase())
+    ) {
+      return lang.value;
+    }
+  }
+  return null;
+}
 
 export default function StreamingConsole() {
   const { client, connectWithConfig, disconnect, connected } = useLiveAPIContext();
@@ -25,6 +44,7 @@ export default function StreamingConsole() {
   const { addHistoryItem } = useHistoryStore();
 
   const detectionBufferRef = useRef('');
+  const aiOutputBufferRef = useRef('');
   const pendingLanguageRef = useRef<string | null>(null);
   const welcomeCompletedRef = useRef(false);
   const phaseRef = useRef(session.sessionPhase);
@@ -59,12 +79,15 @@ export default function StreamingConsole() {
 
     if (action === 'start') {
       detectionBufferRef.current = '';
+      aiOutputBufferRef.current = '';
       welcomeCompletedRef.current = false;
       pendingLanguageRef.current = null;
+      useSessionStore.getState().setPendingGuestLanguage(null);
       useLogStore.getState().clearTurns();
-      session.setPhase('prompting');
+      session.setPhase('selecting-language');
       useUI.getState().setIntroComplete(true);
       useUI.getState().setIntroVolume(0);
+      playSelectLanguageAudio();
 
       supabase.auth.getUser().then(({ data }) => {
         if (data.user) {
@@ -74,25 +97,38 @@ export default function StreamingConsole() {
           });
         }
       });
+    }
 
+    if (action === 'select-language') {
+      const locale = useSessionStore.getState().pendingSelectedLanguage;
+      session.clearPendingAction();
+      useSessionStore.setState({ pendingSelectedLanguage: null });
+      if (!locale) return;
       const sLang = useSessionStore.getState().staffLanguage;
-      const prompt = buildDetectionPrompt(sLang);
+      useSessionStore.getState().setGuestLanguage(locale, 1.0, 'manual-override');
+      useUI.getState().setGuestLanguageJustConfirmed(true);
+      useSessionStore.getState().setPhase('live');
+      useLogStore.getState().clearTurns();
+      useUI.getState().setAwaitingAiResponse(false);
+      playLanguageSelectedChime();
+      playMicOnChime();
+      const lang = AVAILABLE_LANGUAGES.find((l) => l.value === locale);
+      announceGuestLanguage(lang?.name ?? locale);
+      setTimeout(() => useUI.getState().setGuestLanguageJustConfirmed(false), 1500);
+      const prompt = buildBidirectionalPrompt(locale, topic, sLang);
       connectWithConfig(buildConfig(prompt))
-        .then(() => {
-          // Trigger AI to speak first: ask for guest language (Gemini waits for input otherwise)
-          client.send({ text: 'Session started. Ask the guest for their language now.' });
-        })
-        .catch(() => {
-          session.setError('Kan geen verbinding maken');
-        });
+        .then(() => useSessionStore.getState().setPhase('live'))
+        .catch(() => useSessionStore.getState().setError('Herverbinding mislukt'));
     }
 
     if (action === 'stop') {
       useUI.getState().setActiveSpeaker('none');
+      useUI.getState().setAwaitingAiResponse(false);
       useUI.getState().setIntroComplete(false);
       useUI.getState().setIntroVolume(0);
       useUI.getState().setGuestLanguageJustConfirmed(false);
       pendingLanguageRef.current = null;
+      useSessionStore.getState().setPendingGuestLanguage(null);
 
       const dbSid = useUI.getState().dbSessionId;
       if (dbSid) {
@@ -140,17 +176,25 @@ export default function StreamingConsole() {
       useSessionStore.getState().setLastDetectedTranscript('');
       useUI.getState().setGuestLanguageJustConfirmed(true);
       playLanguageConfirmedChime();
+      const lang = AVAILABLE_LANGUAGES.find((l) => l.value === locale);
+      announceGuestLanguage(lang?.name ?? locale);
       setTimeout(() => useUI.getState().setGuestLanguageJustConfirmed(false), 1500);
       // Lock phase to live immediately — stop detection, start translation
       useSessionStore.getState().setPhase('live');
       detectionBufferRef.current = '';
+      aiOutputBufferRef.current = '';
       pendingLanguageRef.current = null;
       useLogStore.getState().clearTurns();
+      useUI.getState().setAwaitingAiResponse(false);
       const prompt = buildBidirectionalPrompt(locale, topic, sLang);
       disconnect();
-      connectWithConfig(buildConfig(prompt)).catch(() =>
-        useSessionStore.getState().setError('Herverbinding mislukt'),
-      );
+      connectWithConfig(buildConfig(prompt))
+        .then(() => {
+          useSessionStore.getState().setPhase('live');
+        })
+        .catch(() => {
+          useSessionStore.getState().setError('Herverbinding mislukt');
+        });
     };
 
     const handleInputTranscription = (text: string, isFinal: boolean) => {
@@ -160,11 +204,7 @@ export default function StreamingConsole() {
       const phase = phaseRef.current;
       const gLang = guestLangRef.current;
 
-      if (phase === 'prompting' && !welcomeCompletedRef.current) {
-        return;
-      }
-
-      if (!gLang && phase === 'detecting') {
+      if (!gLang && (phase === 'prompting' || phase === 'detecting')) {
         detectionBufferRef.current += ' ' + text;
         const trimmed = detectionBufferRef.current.trim();
         useSessionStore.getState().setLastDetectedTranscript(trimmed);
@@ -199,6 +239,7 @@ export default function StreamingConsole() {
         }
         if (matched) {
           pendingLanguageRef.current = matched;
+          useSessionStore.getState().setPendingGuestLanguage(matched);
         }
         return;
       }
@@ -230,6 +271,7 @@ export default function StreamingConsole() {
           sourceLanguage: direction === 'staff-to-guest' ? sLangCurrent : (gLang ?? undefined),
           targetLanguage: direction === 'staff-to-guest' ? (gLang ?? undefined) : sLangCurrent,
         });
+        if (phase === 'live' && isFinal) useUI.getState().setAwaitingAiResponse(true);
       }
     };
 
@@ -238,6 +280,16 @@ export default function StreamingConsole() {
       const last = turns[turns.length - 1];
 
       const phase = phaseRef.current;
+
+      if (phase === 'detecting' && !guestLangRef.current) {
+        aiOutputBufferRef.current += (aiOutputBufferRef.current ? ' ' : '') + text;
+        const extracted = extractLanguageFromConfirm(aiOutputBufferRef.current);
+        if (extracted) {
+          pendingLanguageRef.current = extracted;
+          useSessionStore.getState().setPendingGuestLanguage(extracted);
+        }
+        if (isFinal) aiOutputBufferRef.current = '';
+      }
 
       if (phase === 'prompting' && !welcomeCompletedRef.current) {
         if (last && last.role === 'system' && !last.isFinal) {
@@ -280,17 +332,17 @@ export default function StreamingConsole() {
           .filter(Boolean)
           .join(' ') ?? '';
       const groundingChunks = serverContent.groundingMetadata?.groundingChunks as any;
-      // We rely on `outputTranscription` for agent text to avoid double / partial
-      // updates. Here we only enrich the latest agent turn with grounding info.
-      if (!groundingChunks) return;
-
       const turns = useLogStore.getState().turns;
       const last = turns.at(-1);
       if (last?.role === 'agent') {
-        const u: Partial<ConversationTurn> = {
-          groundingChunks: [...(last.groundingChunks || []), ...groundingChunks],
-        };
-        updateLastTurn(u);
+        const u: Partial<ConversationTurn> = {};
+        if (groundingChunks?.length) {
+          u.groundingChunks = [...(last.groundingChunks || []), ...groundingChunks];
+        }
+        if (text && text.length > (last.text?.length ?? 0)) {
+          u.text = text;
+        }
+        if (Object.keys(u).length) updateLastTurn(u);
       }
     };
 
@@ -304,6 +356,7 @@ export default function StreamingConsole() {
       const phase = phaseRef.current;
       if (phase === 'prompting' && !welcomeCompletedRef.current) {
         welcomeCompletedRef.current = true;
+        aiOutputBufferRef.current = '';
         useSessionStore.getState().setPhase('detecting');
         return;
       }
@@ -338,6 +391,7 @@ export default function StreamingConsole() {
       // Turn has fully completed; no-one actively has the floor now.
       prevSpeakerRef.current = 'none';
       useUI.getState().setActiveSpeaker('none');
+      useUI.getState().setAwaitingAiResponse(false);
     };
 
     client.on('inputTranscription', handleInputTranscription);

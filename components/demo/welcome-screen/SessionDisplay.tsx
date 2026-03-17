@@ -2,6 +2,7 @@ import React, { useMemo, useRef, useEffect, useState } from 'react';
 import cn from 'classnames';
 import './SessionDisplay.css';
 import { useSessionStore, useLogStore, useUI, ConversationTurn } from '../../../lib/state';
+import LanguageRoulette from './LanguageRoulette';
 
 function playChime() {
   const ctx = new AudioContext();
@@ -43,6 +44,18 @@ function isNoise(text: string): boolean {
   return text.replace(/[.\s,!?;:'"()\-–—…]/g, '').trim().length < 2;
 }
 
+function stripMeta(text: string): string {
+  return text
+    .replace(/\*\*[^*]+\*\*/g, '')
+    .replace(/\*[^*]+\*/g, '')
+    .replace(/^\[.*?\]\s*/g, '')
+    .replace(/^\(.*?\)\s*/g, '')
+    .replace(/^(Translating|Here is|Sure|Of course|Certainly)[\s:…]*/gi, '')
+    .replace(/\s*\[.*?\]\s*$/g, '')
+    .replace(/\s*\(.*?\)\s*$/g, '')
+    .trim();
+}
+
 function buildRecords(turns: ConversationTurn[], staffLang: string, guestLang: string | null): ConvRecord[] {
   const records: ConvRecord[] = [];
   for (let i = 0; i < turns.length; i++) {
@@ -57,13 +70,17 @@ function buildRecords(turns: ConversationTurn[], staffLang: string, guestLang: s
       if (turns[j].role === 'user') break;
     }
 
-    const staffLangText = speaker === 'staff' ? t.text.trim() : (agent?.text?.trim() ?? '');
-    const guestLangText = speaker === 'guest' ? t.text.trim() : (agent?.text?.trim() ?? '');
+    if (agent?.text?.trim().match(/^Confirm for /i)) continue;
+
+    const rawStaff = speaker === 'staff' ? t.text.trim() : (agent?.text?.trim() ?? '');
+    const rawGuest = speaker === 'guest' ? t.text.trim() : (agent?.text?.trim() ?? '');
+    const staffLangText = stripMeta(rawStaff) || '…';
+    const guestLangText = stripMeta(rawGuest) || '…';
 
     records.push({
       speaker,
-      staffLangText: staffLangText || '…',
-      guestLangText: guestLangText || '…',
+      staffLangText,
+      guestLangText,
       isStreaming: agent ? !agent.isFinal : true,
       key: i,
     });
@@ -93,6 +110,7 @@ const SessionDisplay: React.FC = () => {
   const isError = session.sessionPhase === 'error';
   const isActive = !isIdle && !isError;
   const isDetecting = session.sessionPhase === 'detecting';
+  const isSelectingLanguage = session.sessionPhase === 'selecting-language';
 
   const records = useMemo(
     () => buildRecords(turns, session.staffLanguage, session.guestLanguage),
@@ -102,14 +120,18 @@ const SessionDisplay: React.FC = () => {
   const isLive = session.sessionPhase === 'live';
   const showConversationArea = isLive || hasConversation;
   const showIntroText = isActive && !hasConversation && isDetecting && !introComplete;
+  const showRoulette = isSelectingLanguage;
 
   const staffScrollRef = useRef<HTMLDivElement>(null);
   const guestScrollRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    staffScrollRef.current?.scrollTo({ top: staffScrollRef.current.scrollHeight, behavior: 'smooth' });
-    guestScrollRef.current?.scrollTo({ top: guestScrollRef.current.scrollHeight, behavior: 'smooth' });
-  }, [records.length]);
+    const scrollToBottom = () => {
+      staffScrollRef.current?.scrollTo({ top: staffScrollRef.current.scrollHeight, behavior: 'smooth' });
+      guestScrollRef.current?.scrollTo({ top: guestScrollRef.current.scrollHeight, behavior: 'smooth' });
+    };
+    scrollToBottom();
+  }, [turns]);
 
   const [typedLen, setTypedLen] = useState(0);
   const typeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -170,9 +192,19 @@ const SessionDisplay: React.FC = () => {
     : undefined;
 
   return (
-    <div className={cn('center-stage-content', { 'has-conversation': showConversationArea })}>
+    <div
+      className={cn('center-stage-content', {
+        'has-conversation': showConversationArea,
+        'has-roulette': showRoulette,
+      })}
+    >
       {/* Orb — center idle, mini header once in live or has conversation */}
-      <div className={cn('orb-wrapper', { mini: isActive && (showConversationArea || introComplete) })}>
+      <div
+        className={cn('orb-wrapper', {
+          mini: isActive && (showConversationArea || introComplete),
+          'orb-mini-roulette': showRoulette,
+        })}
+      >
         <div className={cn('orb-container', { error: isError })} onClick={handleOrbClick}
           style={orbGlow ? { boxShadow: orbGlow } : undefined}>
           <div className="orb-grid" />
@@ -194,23 +226,27 @@ const SessionDisplay: React.FC = () => {
         </p>
       )}
 
+      {showRoulette && <LanguageRoulette />}
+
       {/* Two-panel conversation — staff side (left), guest side (right) */}
       {showConversationArea && (
         <div className={cn('conversation-area', { 'has-records': records.length > 0 })}>
           <div className="conversation-side staff-side">
             <div className="conv-scroll" ref={staffScrollRef}>
               {records.length === 0 ? (
-                <p className="conv-empty">Staff: speak to translate</p>
+                <p className="conv-empty">
+                  {isLive && session.guestLanguage ? 'Speak to translate' : '—'}
+                </p>
               ) : (
                 records.map((r) => (
                   <div className={cn('conv-card', r.speaker === 'staff' ? 'own-card' : 'other-card')} key={r.key}>
-                    <p className="conv-text">
-                      <strong className="conv-tag">{r.speaker === 'staff' ? 'Staff:' : 'Guest:'}</strong> {r.staffLangText}
-                    </p>
-                    <p className="conv-trans">
-                      <span className="conv-trans-label">↳</span> {r.guestLangText}
-                      {r.isStreaming && <span className="transcript-cursor" />}
-                    </p>
+                    <p className="conv-text">{r.staffLangText}</p>
+                    {r.guestLangText !== r.staffLangText && (
+                      <p className="conv-trans">
+                        {r.guestLangText}
+                        {r.isStreaming && <span className="transcript-cursor" />}
+                      </p>
+                    )}
                   </div>
                 ))
               )}
@@ -222,17 +258,19 @@ const SessionDisplay: React.FC = () => {
           <div className="conversation-side guest-side">
             <div className="conv-scroll" ref={guestScrollRef}>
               {records.length === 0 ? (
-                <p className="conv-empty">Guest: speak to translate</p>
+                <p className="conv-empty">
+                  {isLive && session.guestLanguage ? 'Speak to translate' : '—'}
+                </p>
               ) : (
                 records.map((r) => (
                   <div className={cn('conv-card', r.speaker === 'guest' ? 'own-card' : 'other-card')} key={r.key}>
-                    <p className="conv-text">
-                      <strong className="conv-tag">{r.speaker === 'staff' ? 'Staff:' : 'Guest:'}</strong> {r.guestLangText}
-                    </p>
-                    <p className="conv-trans">
-                      <span className="conv-trans-label">↳</span> {r.staffLangText}
-                      {r.isStreaming && <span className="transcript-cursor" />}
-                    </p>
+                    <p className="conv-text">{r.guestLangText}</p>
+                    {r.guestLangText !== r.staffLangText && (
+                      <p className="conv-trans">
+                        {r.staffLangText}
+                        {r.isStreaming && <span className="transcript-cursor" />}
+                      </p>
+                    )}
                   </div>
                 ))
               )}

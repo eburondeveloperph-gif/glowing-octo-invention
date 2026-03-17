@@ -11,13 +11,14 @@ import {
 // Session state machine
 // ---------------------------------------------------------------------------
 
-export type SessionPhase = 'idle' | 'prompting' | 'detecting' | 'live' | 'error';
+export type SessionPhase = 'idle' | 'selecting-language' | 'prompting' | 'detecting' | 'live' | 'error';
 export type GuestLanguageSource = 'auto' | 'manual-override' | null;
 export type TurnDirection = 'guest-to-staff' | 'staff-to-guest' | null;
 
 export interface SessionState {
   staffLanguage: string;
   guestLanguage: string | null;
+  pendingGuestLanguage: string | null;
   guestLanguageSource: GuestLanguageSource;
   sessionPhase: SessionPhase;
   activeTurn: TurnDirection;
@@ -25,18 +26,21 @@ export interface SessionState {
   lastDetectedTranscript: string | null;
   errorMessage: string | null;
 
-  pendingAction: 'start' | 'stop' | 'reset-language' | null;
+  pendingAction: 'start' | 'stop' | 'reset-language' | 'select-language' | null;
   pendingLanguageOverride: string | null;
+  pendingSelectedLanguage: string | null;
 
   requestStart: () => void;
   requestStop: () => void;
   requestResetLanguage: () => void;
   requestLanguageOverride: (language: string) => void;
+  requestSelectLanguage: (language: string) => void;
   clearPendingAction: () => void;
 
   setStaffLanguage: (language: string) => void;
   setPhase: (phase: SessionPhase) => void;
   setGuestLanguage: (language: string, confidence: number, source: GuestLanguageSource) => void;
+  setPendingGuestLanguage: (language: string | null) => void;
   setActiveTurn: (direction: TurnDirection) => void;
   setLastDetectedTranscript: (transcript: string) => void;
   setError: (message: string) => void;
@@ -46,14 +50,16 @@ export interface SessionState {
 const SESSION_DEFAULTS = {
   staffLanguage: STAFF_LANGUAGE,
   guestLanguage: null as string | null,
+  pendingGuestLanguage: null as string | null,
   guestLanguageSource: null as GuestLanguageSource,
   sessionPhase: 'idle' as SessionPhase,
   activeTurn: null as TurnDirection,
   detectionConfidence: null as number | null,
   lastDetectedTranscript: null as string | null,
   errorMessage: null as string | null,
-  pendingAction: null as 'start' | 'stop' | 'reset-language' | null,
+  pendingAction: null as 'start' | 'stop' | 'reset-language' | 'select-language' | null,
   pendingLanguageOverride: null as string | null,
+  pendingSelectedLanguage: null as string | null,
 };
 
 export const useSessionStore = create<SessionState>((set) => ({
@@ -64,16 +70,20 @@ export const useSessionStore = create<SessionState>((set) => ({
   requestResetLanguage: () => set({ pendingAction: 'reset-language' }),
   requestLanguageOverride: (language) =>
     set({ pendingAction: 'reset-language', pendingLanguageOverride: language }),
-  clearPendingAction: () => set({ pendingAction: null, pendingLanguageOverride: null }),
+  requestSelectLanguage: (language) =>
+    set({ pendingAction: 'select-language', pendingSelectedLanguage: language }),
+  clearPendingAction: () =>
+    set({ pendingAction: null, pendingLanguageOverride: null }),
 
   setStaffLanguage: (language) => set({ staffLanguage: language }),
   setPhase: (phase) => set({ sessionPhase: phase, errorMessage: null }),
   setGuestLanguage: (language, confidence, source) =>
-    set({ guestLanguage: language, detectionConfidence: confidence, guestLanguageSource: source }),
+    set({ guestLanguage: language, pendingGuestLanguage: null, detectionConfidence: confidence, guestLanguageSource: source }),
+  setPendingGuestLanguage: (language) => set({ pendingGuestLanguage: language }),
   setActiveTurn: (direction) => set({ activeTurn: direction }),
   setLastDetectedTranscript: (transcript) => set({ lastDetectedTranscript: transcript }),
   setError: (message) => set({ sessionPhase: 'error', errorMessage: message }),
-  reset: () => set({ ...SESSION_DEFAULTS }),
+  reset: () => set({ ...SESSION_DEFAULTS, pendingGuestLanguage: null }),
 }));
 
 // ---------------------------------------------------------------------------
@@ -110,6 +120,7 @@ export const useUI = create<{
   dbSessionId: string | null;
   activeSpeaker: 'none' | 'staff' | 'guest' | 'ai';
   guestLanguageJustConfirmed: boolean;
+  awaitingAiResponse: boolean;
   toggleSidebar: () => void;
   toggleProfile: () => void;
   setMicVolume: (v: number) => void;
@@ -118,6 +129,7 @@ export const useUI = create<{
   setIntroComplete: (v: boolean) => void;
   setActiveSpeaker: (s: 'none' | 'staff' | 'guest' | 'ai') => void;
   setGuestLanguageJustConfirmed: (v: boolean) => void;
+  setAwaitingAiResponse: (v: boolean) => void;
 }>((set) => ({
   isSidebarOpen: false,
   isProfileOpen: false,
@@ -128,6 +140,7 @@ export const useUI = create<{
   dbSessionId: null,
   activeSpeaker: 'none',
   guestLanguageJustConfirmed: false,
+  awaitingAiResponse: false,
   toggleSidebar: () => set((s) => ({ isSidebarOpen: !s.isSidebarOpen, isProfileOpen: false })),
   toggleProfile: () => set((s) => ({ isProfileOpen: !s.isProfileOpen, isSidebarOpen: false })),
   setMicVolume: (micVolume) => set({ micVolume }),
@@ -136,6 +149,7 @@ export const useUI = create<{
   setIntroComplete: (introComplete) => set({ introComplete }),
   setActiveSpeaker: (activeSpeaker) => set({ activeSpeaker }),
   setGuestLanguageJustConfirmed: (guestLanguageJustConfirmed) => set({ guestLanguageJustConfirmed }),
+  setAwaitingAiResponse: (awaitingAiResponse) => set({ awaitingAiResponse }),
 }));
 
 // ---------------------------------------------------------------------------
