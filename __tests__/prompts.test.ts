@@ -17,9 +17,9 @@ describe('buildBidirectionalPrompt', () => {
 
   it('includes translation-only rules', () => {
     const prompt = buildBidirectionalPrompt('Arabic');
-    expect(prompt).toContain('Output translated text only');
-    expect(prompt).toContain('No labels');
-    expect(prompt).toContain('No explanations');
+    expect(prompt).toContain('Return only the translated text');
+    expect(prompt).toContain('add labels');
+    expect(prompt).toContain('explain');
   });
 
   it('includes role-based translation directions', () => {

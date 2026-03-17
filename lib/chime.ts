@@ -37,9 +37,9 @@ function createChime(
   }
 }
 
-/** Premium turn-change chime (staff/guest/AI switch) */
+/** Premium turn-change chime (staff/guest/AI switch) - subtle to avoid overlapping with translation audio */
 export function playTurnChime(): void {
-  createChime([880, 1318, 1760], [0.35, 0.25, 0.2], 0.14, 'sine');
+  createChime([880, 1318, 1760], [0.25, 0.18, 0.15], 0.09, 'sine');
 }
 
 /** Announce guest language aloud via speech synthesis */

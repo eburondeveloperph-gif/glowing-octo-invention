@@ -41,19 +41,10 @@ interface ConvRecord {
 }
 
 function isNoise(text: string): boolean {
-  return text.replace(/[.\s,!?;:'"()\-–—…]/g, '').trim().length < 2;
-}
-
-function stripMeta(text: string): string {
-  return text
-    .replace(/\*\*[^*]+\*\*/g, '')
-    .replace(/\*[^*]+\*/g, '')
-    .replace(/^\[.*?\]\s*/g, '')
-    .replace(/^\(.*?\)\s*/g, '')
-    .replace(/^(Translating|Here is|Sure|Of course|Certainly)[\s:…]*/gi, '')
-    .replace(/\s*\[.*?\]\s*$/g, '')
-    .replace(/\s*\(.*?\)\s*$/g, '')
-    .trim();
+  const t = text.trim();
+  if (/^<noise>$/i.test(t) || /^\[noise\]$/i.test(t) || /^\(noise\)$/i.test(t)) return true;
+  if (t.replace(/[.\s,!?;:'"()\-–—…]/g, '').length < 2) return true;
+  return false;
 }
 
 function buildRecords(turns: ConversationTurn[], staffLang: string, guestLang: string | null): ConvRecord[] {
@@ -71,11 +62,15 @@ function buildRecords(turns: ConversationTurn[], staffLang: string, guestLang: s
     }
 
     if (agent?.text?.trim().match(/^Confirm for /i)) continue;
+    if (t.text.trim().length < 3) continue;
 
     const rawStaff = speaker === 'staff' ? t.text.trim() : (agent?.text?.trim() ?? '');
     const rawGuest = speaker === 'guest' ? t.text.trim() : (agent?.text?.trim() ?? '');
-    const staffLangText = stripMeta(rawStaff) || '…';
-    const guestLangText = stripMeta(rawGuest) || '…';
+    const isEmptyOrEllipsis = (s: string) => !s || /^[.…\s]+$/i.test(s);
+    if (isEmptyOrEllipsis(rawStaff) && isEmptyOrEllipsis(rawGuest)) continue;
+    const staffLangText = isEmptyOrEllipsis(rawStaff) ? '' : rawStaff;
+    const guestLangText = isEmptyOrEllipsis(rawGuest) ? '' : rawGuest;
+    if (!staffLangText && !guestLangText) continue;
 
     records.push({
       speaker,
@@ -241,16 +236,18 @@ const SessionDisplay: React.FC = () => {
               ) : (
                 records.map((r) => {
                   const isStaff = r.speaker === 'staff';
+                  const sourceText = isStaff ? r.staffLangText : r.guestLangText;
+                  const transText = isStaff ? r.guestLangText : r.staffLangText;
                   return (
                     <div className={cn('conv-card', isStaff ? 'own-card' : 'other-card')} key={r.key}>
                       <p className="conv-text">
                         <span className="conv-trans-label">{isStaff ? 'You:' : 'Guest:'}</span>{' '}
-                        {r.staffLangText}
+                        {sourceText}
                       </p>
-                      {r.guestLangText !== r.staffLangText && (
+                      {sourceText !== transText && transText && (
                         <p className="conv-trans">
-                          <span className="conv-trans-label">{isStaff ? 'Translation:' : 'Original:'}</span>{' '}
-                          {r.guestLangText}
+                          <span className="conv-trans-label">{isStaff ? 'Translation:' : 'Translation:'}</span>{' '}
+                          {transText}
                           {r.isStreaming && <span className="transcript-cursor" />}
                         </p>
                       )}
@@ -273,16 +270,18 @@ const SessionDisplay: React.FC = () => {
               ) : (
                 records.map((r) => {
                   const isGuest = r.speaker === 'guest';
+                  const sourceText = isGuest ? r.guestLangText : r.staffLangText;
+                  const transText = isGuest ? r.staffLangText : r.guestLangText;
                   return (
                     <div className={cn('conv-card', isGuest ? 'own-card' : 'other-card')} key={r.key}>
                       <p className="conv-text">
                         <span className="conv-trans-label">{isGuest ? 'You:' : 'Staff:'}</span>{' '}
-                        {r.guestLangText}
+                        {sourceText}
                       </p>
-                      {r.guestLangText !== r.staffLangText && (
+                      {sourceText !== transText && transText && (
                         <p className="conv-trans">
-                          <span className="conv-trans-label">{isGuest ? 'Translation:' : 'Original:'}</span>{' '}
-                          {r.staffLangText}
+                          <span className="conv-trans-label">{isGuest ? 'Translation:' : 'Translation:'}</span>{' '}
+                          {transText}
                           {r.isStreaming && <span className="transcript-cursor" />}
                         </p>
                       )}

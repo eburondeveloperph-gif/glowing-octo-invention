@@ -18,6 +18,40 @@ import { supabase } from '../../../lib/supabase';
 import { playTurnChime, playLanguageConfirmedChime, playSelectLanguageAudio, playMicOnChime, playLanguageSelectedChime } from '../../../lib/chime';
 import SessionDisplay from '../welcome-screen/SessionDisplay';
 
+function isNoiseMarker(text: string): boolean {
+  const t = text.trim();
+  return /^<noise>$/i.test(t) || /^\[noise\]$/i.test(t) || /^\(noise\)$/i.test(t) || t.length < 2;
+}
+
+function isEmptyOrEllipsis(text: string): boolean {
+  const t = text.trim();
+  return !t || /^[.…\s]+$/i.test(t);
+}
+
+/** Strip model commentary (headers, reasoning) and return only the translation. */
+function stripTranslationCommentary(text: string): string {
+  const t = text.trim();
+  if (!t || t.length < 3) return t;
+  if (!/\*\*|Translating|I've got it|I'm (now )?focusing|The goal is|my (task|current challenge)|After considering|Finding the right/i.test(t)) {
+    return t;
+  }
+  const paragraphs = t.split(/\n\n+/).map((p) => p.trim()).filter(Boolean);
+  const translationCandidates = paragraphs.filter(
+    (p) =>
+      p.length < 200 &&
+      !/^(I've|I'm|The|My|After|Finding|So|Thus|Therefore)/i.test(p) &&
+      !/\*\*/.test(p),
+  );
+  if (translationCandidates.length > 0) {
+    return translationCandidates[translationCandidates.length - 1].trim();
+  }
+  const lastPara = paragraphs[paragraphs.length - 1];
+  if (lastPara && lastPara.length < 300 && !/\*\*/.test(lastPara)) return lastPara.trim();
+  let out = t.replace(/\*\*[^*]+\*\*/g, '').trim();
+  const lines = out.split(/\n/).filter((l) => l.length < 150 && !/^(I've|I'm|The|My|After|Finding)/i.test(l));
+  return (lines[lines.length - 1] ?? out).trim();
+}
+
 function extractLanguageFromConfirm(text: string): string | null {
   const m = text.match(/Confirm\s+for\s+(.+?)(?:\.|$)/i);
   if (!m) return null;
@@ -38,7 +72,7 @@ function extractLanguageFromConfirm(text: string): string | null {
 }
 
 export default function StreamingConsole() {
-  const { client, connectWithConfig, disconnect, connected } = useLiveAPIContext();
+  const { client, connectWithConfig, disconnect, connected, playTTS } = useLiveAPIContext();
   const { voice, topic } = useSettings();
   const session = useSessionStore();
   const { addHistoryItem } = useHistoryStore();
@@ -238,6 +272,8 @@ export default function StreamingConsole() {
         return;
       }
 
+      if (isNoiseMarker(text)) return;
+
       const sLangCurrent = staffLangRef.current;
       const direction = gLang ? inferTurnDirection(text, gLang, sLangCurrent) : null;
       const speakerRole = direction === 'staff-to-guest' ? 'staff' : 'guest';
@@ -253,9 +289,27 @@ export default function StreamingConsole() {
       }
 
       if (last && last.role === 'user' && !last.isFinal) {
+        if (isNoiseMarker(text)) return;
         const separator = last.text.endsWith(' ') || text.startsWith(' ') ? '' : ' ';
         updateLastTurn({ text: last.text + separator + text, isFinal });
-      } else {
+      } else if (last && last.role === 'user' && last.isFinal && isFinal && text.trim().length >= 4) {
+        const lastText = (last.text ?? '').trim();
+        const newText = text.trim();
+        if (newText === lastText || (newText.length > lastText.length && newText.startsWith(lastText.slice(0, 4)))) {
+          updateLastTurn({ text: newText.length > lastText.length ? newText : lastText, isFinal: true });
+        } else {
+          addTurn({
+            role: 'user',
+            text,
+            isFinal,
+            speakerRole: speakerRole as 'staff' | 'guest',
+            direction,
+            sourceLanguage: direction === 'staff-to-guest' ? sLangCurrent : (gLang ?? undefined),
+            targetLanguage: direction === 'staff-to-guest' ? (gLang ?? undefined) : sLangCurrent,
+          });
+          if (phase === 'live' && isFinal) useUI.getState().setAwaitingAiResponse(true);
+        }
+      } else if (!isFinal || text.trim().length >= 3) {
         addTurn({
           role: 'user',
           text,
@@ -276,34 +330,58 @@ export default function StreamingConsole() {
       const phase = phaseRef.current;
 
       if (phase === 'detecting' && !guestLangRef.current) {
-        aiOutputBufferRef.current += (aiOutputBufferRef.current ? ' ' : '') + text;
+        if (!isNoiseMarker(text)) {
+          aiOutputBufferRef.current += (aiOutputBufferRef.current ? ' ' : '') + text;
+        }
         const extracted = extractLanguageFromConfirm(aiOutputBufferRef.current);
         if (extracted) {
           pendingLanguageRef.current = extracted;
           useSessionStore.getState().setPendingGuestLanguage(extracted);
         }
-        if (isFinal) aiOutputBufferRef.current = '';
+        if (isFinal) {
+          const toSpeak = aiOutputBufferRef.current.trim();
+          if (toSpeak) playTTS(toSpeak).catch(() => {});
+          aiOutputBufferRef.current = '';
+        }
       }
 
       if (phase === 'prompting' && !welcomeCompletedRef.current) {
+        let fullText = '';
         if (last && last.role === 'system' && !last.isFinal) {
           const separator = last.text.endsWith(' ') || text.startsWith(' ') ? '' : ' ';
-          updateLastTurn({ text: last.text + separator + text, isFinal });
+          fullText = last.text + separator + text;
+          updateLastTurn({ text: fullText, isFinal });
         } else {
+          fullText = text;
           addTurn({ role: 'system', text, isFinal, speakerRole: 'system' });
         }
+        if (isFinal && fullText.trim()) playTTS(fullText.trim()).catch(() => {});
         return;
       }
 
+      if (isNoiseMarker(text)) return;
+
+      let finalText = '';
       if (last && last.role === 'agent' && !last.isFinal) {
         const separator = last.text.endsWith(' ') || text.startsWith(' ') ? '' : ' ';
-        updateLastTurn({ text: last.text + separator + text, isFinal });
+        finalText = last.text + separator + text;
+        if (phaseRef.current === 'live' && isFinal) {
+          finalText = stripTranslationCommentary(finalText.trim());
+        }
+        if (!isEmptyOrEllipsis(finalText)) {
+          updateLastTurn({ text: finalText, isFinal });
+        }
       } else {
+        finalText = text;
+        if (phaseRef.current === 'live' && isFinal) {
+          finalText = stripTranslationCommentary(finalText.trim());
+        }
+        if (isEmptyOrEllipsis(finalText) && phaseRef.current === 'live') return;
         const currentSession = useSessionStore.getState();
         const dir = currentSession.activeTurn;
         addTurn({
           role: 'agent',
-          text,
+          text: finalText,
           isFinal,
           speakerRole: 'system',
           direction: dir,
@@ -314,17 +392,25 @@ export default function StreamingConsole() {
         if (prevSpeakerRef.current !== 'ai') {
           prevSpeakerRef.current = 'ai';
           ui.setActiveSpeaker('ai');
-          playTurnChime();
+          /* Skip chime when AI speaks - Live API audio plays translation, avoid double audio */
         }
+      }
+      if (phaseRef.current === 'live' && isFinal && finalText.trim() && !isEmptyOrEllipsis(finalText)) {
+        playTTS(finalText.trim()).catch(() => {});
       }
     };
 
     const handleContent = (serverContent: LiveServerContent) => {
-      const text =
+      let text =
         serverContent.modelTurn?.parts
           ?.map((p: any) => p.text)
           .filter(Boolean)
           .join(' ') ?? '';
+      if (phaseRef.current === 'live' && text.includes('\n\n') && text.trim().length > 80) {
+        const stripped = stripTranslationCommentary(text.trim());
+        if (stripped && !isEmptyOrEllipsis(stripped)) text = stripped;
+      }
+      if (isNoiseMarker(text) || (phaseRef.current === 'live' && isEmptyOrEllipsis(text))) return;
       const groundingChunks = serverContent.groundingMetadata?.groundingChunks as any;
       const turns = useLogStore.getState().turns;
       const last = turns.at(-1);
@@ -333,10 +419,34 @@ export default function StreamingConsole() {
         if (groundingChunks?.length) {
           u.groundingChunks = [...(last.groundingChunks || []), ...groundingChunks];
         }
-        if (text && text.length > (last.text?.length ?? 0)) {
-          u.text = text;
+        const currentText = (last.text ?? '').trim();
+        const newText = text.trim();
+        if (newText && newText.length > currentText.length) {
+          u.text = newText;
         }
         if (Object.keys(u).length) updateLastTurn(u);
+      } else if (last?.role === 'user' && text && phaseRef.current === 'live') {
+        const userText = (last.text ?? '').trim().toLowerCase();
+        const modelText = text.trim().toLowerCase();
+        const isLikelyEcho = userText.length > 3 && (modelText === userText || modelText.startsWith(userText.slice(0, 15)) || userText.startsWith(modelText.slice(0, 15)));
+        if (isLikelyEcho) return;
+        const currentSession = useSessionStore.getState();
+        const dir = currentSession.activeTurn;
+        addTurn({
+          role: 'agent',
+          text,
+          isFinal: false,
+          speakerRole: 'system',
+          direction: dir,
+          sourceLanguage: dir === 'staff-to-guest' ? currentSession.staffLanguage : (currentSession.guestLanguage ?? undefined),
+          targetLanguage: dir === 'staff-to-guest' ? (currentSession.guestLanguage ?? undefined) : currentSession.staffLanguage,
+        });
+        const ui = useUI.getState();
+        if (prevSpeakerRef.current !== 'ai') {
+          prevSpeakerRef.current = 'ai';
+          ui.setActiveSpeaker('ai');
+          /* Skip chime when AI speaks - Live API audio plays translation, avoid double audio */
+        }
       }
     };
 
@@ -358,6 +468,7 @@ export default function StreamingConsole() {
       const updatedTurns = useLogStore.getState().turns;
       const finalAgent = updatedTurns.at(-1);
       if (finalAgent?.role === 'agent' && finalAgent.text) {
+        const translatedText = finalAgent.text.trim();
         let correspondingUser: ConversationTurn | null = null;
         for (let i = updatedTurns.length - 2; i >= 0; i--) {
           if (updatedTurns[i].role === 'user') {
@@ -370,14 +481,14 @@ export default function StreamingConsole() {
           const speaker = correspondingUser.speakerRole === 'staff' ? 'staff' : 'guest';
           addHistoryItem({
             sourceText: correspondingUser.text.trim(),
-            translatedText: finalAgent.text.trim(),
+            translatedText,
             lang1: staffLangRef.current,
             lang2: gLang || 'Unknown',
           });
 
           const dbSid = useUI.getState().dbSessionId;
           if (dbSid) {
-            saveTranslation(dbSid, speaker as 'staff' | 'guest', correspondingUser.text.trim(), finalAgent.text.trim());
+            saveTranslation(dbSid, speaker as 'staff' | 'guest', correspondingUser.text.trim(), translatedText);
           }
         }
       }
@@ -399,7 +510,7 @@ export default function StreamingConsole() {
       client.off('content', handleContent);
       client.off('turncomplete', handleTurnComplete);
     };
-  }, [client, addHistoryItem, topic, disconnect, connectWithConfig, buildConfig]);
+  }, [client, addHistoryItem, topic, disconnect, connectWithConfig, buildConfig, playTTS]);
 
   return (
     <main className="center-stage">

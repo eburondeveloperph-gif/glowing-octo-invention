@@ -20,56 +20,52 @@
 
 const AudioRecordingWorklet = `
 class AudioProcessingWorklet extends AudioWorkletProcessor {
-
-  // send and clear buffer every 2048 samples, 
-  // which at 16khz is about 8 times a second
   buffer = new Int16Array(2048);
-
-  // current write index
   bufferWriteIndex = 0;
 
-  constructor() {
-    super();
-    this.hasAudio = false;
-  }
+  // Soft noise gate: attenuate (not zero) when below threshold to reduce noise floor
+  NOISE_FLOOR = 0.0015;
+  GATE_ATTENUATION = 0.12;
+  RMS_SMOOTHING = 0.88;
 
-  /**
-   * @param inputs Float32Array[][] [input#][channel#][sample#] so to access first inputs 1st channel inputs[0][0]
-   * @param outputs Float32Array[][]
-   */
+  rmsHistory = 0;
+
   process(inputs) {
-    if (inputs[0].length) {
+    if (inputs[0]?.length) {
       const channel0 = inputs[0][0];
       this.processChunk(channel0);
     }
     return true;
   }
 
-  sendAndClearBuffer(){
+  sendAndClearBuffer() {
     this.port.postMessage({
       event: "chunk",
-      data: {
-        int16arrayBuffer: this.buffer.slice(0, this.bufferWriteIndex).buffer,
-      },
+      data: { int16arrayBuffer: this.buffer.slice(0, this.bufferWriteIndex).buffer },
     });
     this.bufferWriteIndex = 0;
   }
 
   processChunk(float32Array) {
     const l = float32Array.length;
-    
-    for (let i = 0; i < l; i++) {
-      // convert float32 -1 to 1 to int16 -32768 to 32767
-      const int16Value = float32Array[i] * 32768;
-      this.buffer[this.bufferWriteIndex++] = int16Value;
-      if(this.bufferWriteIndex >= this.buffer.length) {
-        this.sendAndClearBuffer();
-      }
-    }
+    let sumSq = 0;
+    for (let i = 0; i < l; i++) sumSq += float32Array[i] * float32Array[i];
+    const rms = Math.sqrt(sumSq / l);
+    this.rmsHistory = this.rmsHistory * this.RMS_SMOOTHING + rms * (1 - this.RMS_SMOOTHING);
 
-    if(this.bufferWriteIndex >= this.buffer.length) {
-      this.sendAndClearBuffer();
+    const gate = rms < this.NOISE_FLOOR
+      ? this.GATE_ATTENUATION
+      : rms < this.NOISE_FLOOR * 2
+        ? this.GATE_ATTENUATION + (1 - this.GATE_ATTENUATION) * ((rms - this.NOISE_FLOOR) / this.NOISE_FLOOR)
+        : 1;
+
+    for (let i = 0; i < l; i++) {
+      const gated = float32Array[i] * gate;
+      const int16Value = Math.max(-32768, Math.min(32767, gated * 32768));
+      this.buffer[this.bufferWriteIndex++] = int16Value;
+      if (this.bufferWriteIndex >= this.buffer.length) this.sendAndClearBuffer();
     }
+    if (this.bufferWriteIndex >= this.buffer.length) this.sendAndClearBuffer();
   }
 }
 `;

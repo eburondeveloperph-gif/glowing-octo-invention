@@ -61,37 +61,57 @@ export class AudioRecorder {
     }
 
     this.starting = new Promise(async (resolve, reject) => {
+      const supported = navigator.mediaDevices.getSupportedConstraints?.() ?? {};
       this.stream = await navigator.mediaDevices.getUserMedia({
         audio: {
-          noiseSuppression: true,
           echoCancellation: true,
+          noiseSuppression: true,
           autoGainControl: true,
+          ...(supported.channelCount && { channelCount: { ideal: 1, min: 1 } }),
+          ...(supported.sampleRate && { sampleRate: { ideal: this.sampleRate, min: 16000 } }),
         },
       });
       this.audioContext = await audioContext({ sampleRate: this.sampleRate });
       this.source = this.audioContext.createMediaStreamSource(this.stream);
 
-      // Create filters for noise reduction
+      const t = this.audioContext.currentTime;
+
+      // Highpass: cut rumble, HVAC, handling noise below 80Hz
       const highpassFilter = this.audioContext.createBiquadFilter();
       highpassFilter.type = 'highpass';
-      highpassFilter.frequency.setValueAtTime(120, this.audioContext.currentTime); // Cut rumble below 120Hz
+      highpassFilter.frequency.setValueAtTime(80, t);
+      highpassFilter.Q.setValueAtTime(0.7, t);
 
+      // Notch filter: cut 50/60Hz mains hum (55Hz catches both EU/US)
+      const notchFilter = this.audioContext.createBiquadFilter();
+      notchFilter.type = 'notch';
+      notchFilter.frequency.setValueAtTime(55, t);
+      notchFilter.Q.setValueAtTime(8, t);
+
+      // Lowpass: cut hiss and non-speech above 7kHz (speech fundamentals < 4kHz)
       const lowpassFilter = this.audioContext.createBiquadFilter();
       lowpassFilter.type = 'lowpass';
-      lowpassFilter.frequency.setValueAtTime(8000, this.audioContext.currentTime); // Cut noise above 8kHz
+      lowpassFilter.frequency.setValueAtTime(7000, t);
+      lowpassFilter.Q.setValueAtTime(0.7, t);
 
-      // Create a compressor to normalize volume
+      // Compressor: normalize speech dynamics, boost quiet speech
       const compressor = this.audioContext.createDynamicsCompressor();
-      compressor.threshold.setValueAtTime(-50, this.audioContext.currentTime);
-      compressor.knee.setValueAtTime(40, this.audioContext.currentTime);
-      compressor.ratio.setValueAtTime(12, this.audioContext.currentTime);
-      compressor.attack.setValueAtTime(0, this.audioContext.currentTime);
-      compressor.release.setValueAtTime(0.25, this.audioContext.currentTime);
+      compressor.threshold.setValueAtTime(-42, t);
+      compressor.knee.setValueAtTime(24, t);
+      compressor.ratio.setValueAtTime(6, t);
+      compressor.attack.setValueAtTime(0.002, t);
+      compressor.release.setValueAtTime(0.12, t);
 
-      // Chain the nodes: source -> highpass -> lowpass -> compressor -> worklets
+      // Gain: boost quiet speech for better transcription
+      const gainNode = this.audioContext.createGain();
+      gainNode.gain.setValueAtTime(1.4, t);
+
+      // Chain: source -> highpass -> notch -> lowpass -> compressor -> gain -> worklets
       this.source.connect(highpassFilter);
-      highpassFilter.connect(lowpassFilter);
+      highpassFilter.connect(notchFilter);
+      notchFilter.connect(lowpassFilter);
       lowpassFilter.connect(compressor);
+      compressor.connect(gainNode);
 
       const workletName = 'audio-recorder-worklet';
       const src = createWorketFromSrc(workletName, AudioRecordingWorklet);
@@ -112,7 +132,7 @@ export class AudioRecorder {
           this.emitter.emit('data', arrayBufferString);
         }
       };
-      compressor.connect(this.recordingWorklet);
+      gainNode.connect(this.recordingWorklet);
 
       // vu meter worklet
       const vuWorkletName = 'vu-meter';
@@ -125,7 +145,7 @@ export class AudioRecorder {
         this.emitter.emit('volume', ev.data.volume);
       };
 
-      compressor.connect(this.vuWorklet);
+      gainNode.connect(this.vuWorklet);
       this.recording = true;
       resolve();
       this.starting = null;

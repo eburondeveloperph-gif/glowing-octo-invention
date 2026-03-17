@@ -5,6 +5,7 @@ import { AudioStreamer } from '../../lib/audio-streamer';
 import { audioContext } from '../../lib/utils';
 import VolMeterWorket from '../../lib/worklets/vol-meter';
 import { useSettings } from '../../lib/state';
+import { generateTTSAudio } from '../../lib/gemini-tts';
 
 export type UseLiveApiResults = {
   client: GenAILiveClient;
@@ -18,11 +19,17 @@ export type UseLiveApiResults = {
   volume: number;
   isTtsMuted: boolean;
   toggleTtsMute: () => void;
+  playTTS: (text: string) => Promise<void>;
 };
 
+/** Use Live API audio for lowest latency; set true to use TTS API instead */
+const USE_TTS_API = false;
+
 export function useLiveApi({ apiKey }: { apiKey: string }): UseLiveApiResults {
-  const { model } = useSettings();
+  const { model, voice } = useSettings();
   const client = useMemo(() => new GenAILiveClient(apiKey, model), [apiKey, model]);
+  const apiKeyRef = useRef(apiKey);
+  apiKeyRef.current = apiKey;
 
   const audioStreamerRef = useRef<AudioStreamer | null>(null);
   const configRef = useRef<LiveConnectConfig>({});
@@ -47,25 +54,60 @@ export function useLiveApi({ apiKey }: { apiKey: string }): UseLiveApiResults {
     });
   }, []);
 
+  const streamerReadyRef = useRef<Promise<AudioStreamer | null>>(Promise.resolve(null));
   useEffect(() => {
     if (!audioStreamerRef.current) {
-      audioContext({ id: 'audio-out' }).then((audioCtx: AudioContext) => {
-        audioStreamerRef.current = new AudioStreamer(audioCtx);
-        audioStreamerRef.current
-          .addWorklet<any>('vumeter-out', VolMeterWorket, (ev: any) => {
-            setVolume(ev.data.volume);
-          })
-          .catch((err) => console.error('Error adding worklet:', err));
-      });
+      streamerReadyRef.current = audioContext({ id: 'audio-out' }).then(
+        (audioCtx: AudioContext) => {
+          const streamer = new AudioStreamer(audioCtx);
+          audioStreamerRef.current = streamer;
+          streamer
+            .addWorklet<any>('vumeter-out', VolMeterWorket, (ev: any) => {
+              setVolume(ev.data.volume);
+            })
+            .catch((err) => console.error('Error adding worklet:', err));
+          return streamer;
+        },
+      );
     }
   }, []);
+
+  const playTTS = useCallback(
+    async (text: string) => {
+      if (!text?.trim() || isTtsMuted) return;
+      if (!USE_TTS_API) return; // Live API audio plays instead
+      const streamer = audioStreamerRef.current;
+      if (!streamer) {
+        console.warn('TTS: audio streamer not ready');
+        return;
+      }
+      try {
+        await streamer.resume();
+        await generateTTSAudio({
+          apiKey: apiKeyRef.current,
+          voice: voice || 'Orus',
+          text: text.trim(),
+          onChunk: (chunk) => streamer.addPCM16(chunk),
+        });
+      } catch (err) {
+        console.error('TTS error:', err);
+      }
+    },
+    [voice, isTtsMuted],
+  );
 
   useEffect(() => {
     const onOpen = () => setConnected(true);
     const onClose = () => setConnected(false);
     const stopAudioStreamer = () => audioStreamerRef.current?.stop();
     const onAudio = (data: ArrayBuffer) => {
-      audioStreamerRef.current?.addPCM16(new Uint8Array(data));
+      if (!USE_TTS_API) {
+        streamerReadyRef.current.then((streamer) => {
+          if (streamer) {
+            streamer.resume().then(() => streamer.addPCM16(new Uint8Array(data)));
+          }
+        });
+      }
     };
 
     client.on('open', onOpen);
@@ -115,5 +157,6 @@ export function useLiveApi({ apiKey }: { apiKey: string }): UseLiveApiResults {
     volume,
     isTtsMuted,
     toggleTtsMute,
+    playTTS,
   };
 }

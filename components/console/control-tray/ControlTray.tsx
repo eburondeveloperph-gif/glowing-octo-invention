@@ -1,6 +1,7 @@
 import cn from 'classnames';
 import { memo, ReactNode, useEffect, useRef, useState } from 'react';
 import { AudioRecorder } from '../../../lib/audio-recorder';
+import { SimpleVAD } from '../../../lib/vad';
 import { useSessionStore, useLogStore, useUI } from '../../../lib/state';
 import { useLiveAPIContext } from '../../../contexts/LiveAPIContext';
 import { uploadAudio } from '../../../lib/db';
@@ -28,6 +29,9 @@ function ts() {
 function ControlTray({ children }: ControlTrayProps) {
   const [audioRecorder] = useState(() => new AudioRecorder());
   const [muted, setMuted] = useState(false);
+  const vadRef = useRef<SimpleVAD | null>(null);
+  const lastVolumeRef = useRef(0);
+  const lastVadEndRef = useRef(0);
   const [pendingBlob, setPendingBlob] = useState<Blob | null>(null);
 
   const {
@@ -111,18 +115,36 @@ function ControlTray({ children }: ControlTrayProps) {
   }, [connected, setMicVolume]);
 
   useEffect(() => {
+    if (!vadRef.current) vadRef.current = new SimpleVAD({
+      speechThreshold: 0.016,
+      silenceMs: 520,
+      postSpeechMs: 220,
+    });
+
     const onData = (base64: string) => {
       const ui = useUI.getState();
       if (!ui.introComplete) return;
       if (ttsPlayingRef.current) return;
       if (ui.awaitingAiResponse) return;
+
+      const vad = vadRef.current!;
+      const vol = lastVolumeRef.current;
+      const shouldSend = vad.shouldSend(vol) || (Date.now() - lastVadEndRef.current < 350);
+      if (!shouldSend) return;
+
       client.sendRealtimeInput([
         { mimeType: 'audio/pcm;rate=16000', data: base64 },
       ]);
+
+      if (vad.getState() === 'ended') lastVadEndRef.current = Date.now();
     };
-    const onVolume = (vol: number) => setMicVolume(vol);
+    const onVolume = (vol: number) => {
+      lastVolumeRef.current = vol;
+      setMicVolume(vol);
+    };
 
     if (connected && !muted && audioRecorder) {
+      vadRef.current.reset();
       audioRecorder.on('data', onData);
       audioRecorder.on('volume', onVolume);
       audioRecorder.start();
