@@ -1,0 +1,335 @@
+/* ------------------------------------------------------------------ */
+/*  Center stage                                                       */
+/* ------------------------------------------------------------------ */
+
+.center-stage-content {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  height: 100%;
+}
+
+/* ------------------------------------------------------------------ */
+/*  The Orb                                                            */
+/* ------------------------------------------------------------------ */
+
+.orb-wrapper {
+  position: relative;
+  z-index: 5;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  transition: all 0.6s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.orb-container {
+  position: relative;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  width: 140px;
+  height: 140px;
+  border-radius: 50%;
+  background: radial-gradient(circle at 50% 60%, #0055ff, #001a4d 70%);
+  box-shadow:
+    0 0 50px 10px rgba(0, 110, 255, 0.4),
+    inset 0 0 20px rgba(0, 150, 255, 0.5),
+    inset 0 -20px 25px rgba(0, 212, 255, 0.9);
+  border: 2px solid rgba(0, 180, 255, 0.6);
+  cursor: pointer;
+  overflow: hidden;
+  transition: width 0.6s cubic-bezier(0.4, 0, 0.2, 1),
+              height 0.6s cubic-bezier(0.4, 0, 0.2, 1),
+              box-shadow 0.3s ease;
+}
+
+.orb-wrapper.mini {
+  position: absolute;
+  top: 16px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 12;
+}
+
+.orb-wrapper.mini .orb-container {
+  width: 44px;
+  height: 44px;
+  border-width: 1.5px;
+}
+
+.orb-wrapper.mini .orb-base-glow {
+  width: 30px;
+  height: 8px;
+  margin-top: -6px;
+  filter: blur(10px);
+}
+
+.orb-grid {
+  position: absolute;
+  inset: 0;
+  background-image:
+    linear-gradient(rgba(0, 150, 255, 0.15) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(0, 150, 255, 0.15) 1px, transparent 1px);
+  background-size: 20px 20px;
+  border-radius: 50%;
+  -webkit-mask-image: radial-gradient(circle at center, black 30%, transparent 70%);
+  mask-image: radial-gradient(circle at center, black 30%, transparent 70%);
+  z-index: 1;
+  transform: scale(1.1);
+  transition: opacity 0.5s ease;
+}
+
+.orb-stars {
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  opacity: 0;
+  z-index: 1;
+  transition: opacity 0.8s ease;
+  background-image:
+    radial-gradient(1.5px 1.5px at 20% 30%, #fff, transparent),
+    radial-gradient(2px 2px at 40% 70%, #00d4ff, transparent),
+    radial-gradient(1px 1px at 60% 20%, #fff, transparent),
+    radial-gradient(2.5px 2.5px at 80% 50%, #00d4ff, transparent),
+    radial-gradient(1.5px 1.5px at 30% 80%, #fff, transparent),
+    radial-gradient(2px 2px at 70% 80%, #fff, transparent);
+  box-shadow: inset 0 0 40px rgba(0, 50, 200, 0.5);
+}
+
+.orb-visualizer {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  z-index: 2;
+  pointer-events: none;
+  border-radius: 50%;
+  -webkit-mask-image: radial-gradient(circle, black 55%, transparent 70%);
+  mask-image: radial-gradient(circle, black 55%, transparent 70%);
+}
+
+.orb-vis-bar {
+  width: 2.5px;
+  height: 3px;
+  background: rgba(255, 255, 255, 0.8);
+  border-radius: 1.5px;
+  opacity: 0.15;
+  flex-shrink: 0;
+  will-change: height, opacity;
+  box-shadow: 0 0 4px rgba(0, 212, 255, 0.4);
+}
+
+.orb-reflection {
+  position: absolute;
+  top: 4%;
+  left: 10%;
+  width: 80%;
+  height: 35%;
+  background: linear-gradient(to bottom, rgba(255,255,255,0.6), rgba(255,255,255,0.1) 50%, transparent);
+  border-radius: 50% 50% 0 0 / 100% 100% 0 0;
+  z-index: 3;
+  pointer-events: none;
+}
+
+.orb-text {
+  position: relative;
+  z-index: 3;
+  font-size: 28px;
+  font-weight: 600;
+  color: #fff;
+  letter-spacing: 0.5px;
+  text-shadow: 0 2px 4px rgba(0,0,0,0.6), 0 0 15px rgba(255,255,255,0.5);
+  pointer-events: none;
+  transition: opacity 0.5s ease;
+}
+
+.orb-base-glow {
+  width: 90px;
+  height: 20px;
+  margin-top: -10px;
+  background: var(--blue-glow-light);
+  filter: blur(15px);
+  border-radius: 50%;
+  opacity: 0.7;
+  pointer-events: none;
+  transition: all 0.5s ease;
+}
+
+.orb-container.error {
+  background: radial-gradient(circle at 50% 60%, #cc3300, #4d1a00 70%);
+  box-shadow: 0 0 50px 10px rgba(255,70,0,0.4), inset 0 0 20px rgba(255,100,50,0.5), inset 0 -20px 25px rgba(255,150,80,0.9);
+  border-color: rgba(255,100,50,0.6);
+}
+
+.App.active .orb-text { opacity: 0; }
+.App.active .orb-grid { opacity: 0; }
+.App.active .orb-stars { opacity: 1; animation: orb-spin 15s linear infinite; }
+.App.active .orb-container {
+  box-shadow: 0 0 70px 20px rgba(0,110,255,0.7), inset 0 0 30px rgba(0,150,255,0.8), inset 0 -30px 40px rgba(0,212,255,1);
+}
+.App.active .orb-base-glow { opacity: 0.9; filter: blur(20px); }
+
+@keyframes orb-spin {
+  0% { transform: rotate(0deg) scale(1.1); }
+  50% { transform: rotate(180deg) scale(1.2); }
+  100% { transform: rotate(360deg) scale(1.1); }
+}
+
+/* ------------------------------------------------------------------ */
+/*  Typewriter intro                                                   */
+/* ------------------------------------------------------------------ */
+
+.intro-typewriter {
+  position: relative;
+  z-index: 6;
+  margin-top: 32px;
+  max-width: 420px;
+  width: 90vw;
+  text-align: center;
+  font-size: 0.95rem;
+  line-height: 1.7;
+  color: var(--text-muted, #b0b5c0);
+  letter-spacing: 0.3px;
+}
+
+.tw-cursor {
+  display: inline-block;
+  width: 2px;
+  height: 1em;
+  background: var(--blue-glow-light, #00d4ff);
+  margin-left: 2px;
+  vertical-align: text-bottom;
+  animation: blink 0.8s step-end infinite;
+}
+
+/* ------------------------------------------------------------------ */
+/*  Two-panel conversation                                             */
+/* ------------------------------------------------------------------ */
+
+.conversation-area {
+  display: flex;
+  width: 100%;
+  height: 100%;
+  padding: 64px 0 80px;
+  animation: conv-in 0.4s ease-out;
+  overflow: hidden;
+}
+
+@keyframes conv-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+.conversation-side {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.conv-scroll {
+  flex: 1;
+  overflow-y: auto;
+  padding: 12px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255,255,255,0.06) transparent;
+}
+
+.conv-scroll::-webkit-scrollbar { width: 3px; }
+.conv-scroll::-webkit-scrollbar-track { background: transparent; }
+.conv-scroll::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.08); border-radius: 2px; }
+
+.conversation-divider {
+  width: 1px;
+  background: linear-gradient(to bottom, transparent, rgba(0,180,255,0.2) 10%, rgba(0,180,255,0.12) 90%, transparent);
+  flex-shrink: 0;
+}
+
+/* ------------------------------------------------------------------ */
+/*  Conversation card                                                  */
+/* ------------------------------------------------------------------ */
+
+.conv-card {
+  padding: 10px 14px;
+  border-radius: 10px;
+  border-left: 3px solid transparent;
+  animation: card-in 0.25s ease-out;
+}
+
+.conv-card.own-card {
+  background: rgba(0, 150, 255, 0.06);
+  border-left-color: rgba(0, 180, 255, 0.5);
+}
+
+.conv-card.other-card {
+  background: rgba(255, 255, 255, 0.02);
+  border-left-color: rgba(255, 255, 255, 0.1);
+}
+
+.guest-side .conv-card.own-card {
+  background: rgba(167, 139, 250, 0.06);
+  border-left-color: rgba(167, 139, 250, 0.5);
+}
+
+@keyframes card-in {
+  from { opacity: 0; transform: translateY(4px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.conv-tag {
+  font-weight: 700;
+  color: var(--blue-glow-light, #00d4ff);
+  font-size: 0.75rem;
+  letter-spacing: 0.3px;
+}
+
+.guest-side .conv-tag {
+  color: #a78bfa;
+}
+
+.conv-text {
+  font-size: 0.92rem;
+  line-height: 1.55;
+  color: var(--text-main, #fff);
+  white-space: pre-wrap;
+  word-wrap: break-word;
+}
+
+.conv-trans {
+  margin-top: 4px;
+  font-size: 0.75rem;
+  line-height: 1.4;
+  color: rgba(0, 200, 255, 0.55);
+  white-space: pre-wrap;
+  word-wrap: break-word;
+  font-style: italic;
+}
+
+.guest-side .conv-trans {
+  color: rgba(167, 139, 250, 0.5);
+}
+
+.conv-trans-label {
+  font-style: normal;
+  opacity: 0.7;
+  margin-right: 2px;
+}
+
+.transcript-cursor {
+  display: inline-block;
+  width: 2px;
+  height: 1em;
+  background-color: var(--blue-glow-light);
+  margin-left: 3px;
+  animation: blink 1s step-end infinite;
+  vertical-align: bottom;
+}

@@ -1,84 +1,32 @@
-/**
- * @license
- * SPDX-License-Identifier: Apache-2.0
-*/
-/**
- * Copyright 2024 Google LLC
- *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- *     http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
- */
-
-import { useEffect } from 'react';
+import cn from 'classnames';
 import ControlTray from './components/console/control-tray/ControlTray';
 import ErrorScreen from './components/demo/ErrorScreen';
 import StreamingConsole from './components/demo/streaming-console/StreamingConsole';
-
 import Header from './components/Header';
 import Sidebar from './components/Sidebar';
+import ProfileSidebar from './components/ProfileSidebar';
 import { LiveAPIProvider } from './contexts/LiveAPIContext';
-import { useAuth, updateUserSettings } from './lib/auth';
-import { useSettings } from './lib/state';
+import { useSessionStore } from './lib/state';
 
-const API_KEY = process.env.API_KEY;
-if (typeof API_KEY !== 'string') {
-  throw new Error(
-    'Missing required environment variable: API_KEY'
-  );
+const API_KEY = process.env.GEMINI_API_KEY as string;
+if (typeof API_KEY !== 'string' || !API_KEY) {
+  throw new Error('Missing required environment variable: GEMINI_API_KEY');
 }
 
-/**
- * Main application component that provides a streaming interface for Live API.
- * Manages video streaming state and provides controls for webcam/screen capture.
- */
-function App() {
-  const { user } = useAuth();
-
-  useEffect(() => {
-    if (!user) return;
-
-    const unsub = useSettings.subscribe((state, prevState) => {
-      const changes: Partial<{ systemPrompt: string; voice: string }> = {};
-      if (state.systemPrompt !== prevState.systemPrompt) {
-        changes.systemPrompt = state.systemPrompt;
-      }
-      if (state.voice !== prevState.voice) {
-        changes.voice = state.voice;
-      }
-      if (Object.keys(changes).length > 0) {
-        updateUserSettings(user.id, changes);
-      }
-    });
-
-    return () => unsub();
-  }, [user]);
+export default function App() {
+  const phase = useSessionStore((s) => s.sessionPhase);
+  const isActive = phase !== 'idle' && phase !== 'error';
 
   return (
-    <div className="App">
+    <div className={cn('App', { active: isActive })}>
       <LiveAPIProvider apiKey={API_KEY}>
         <ErrorScreen />
         <Header />
+        <StreamingConsole />
+        <ControlTray />
         <Sidebar />
-        <div className="streaming-console">
-          <main>
-            <div className="main-app-area">
-              <StreamingConsole />
-            </div>
-            <ControlTray></ControlTray>
-          </main>
-        </div>
+        <ProfileSidebar />
       </LiveAPIProvider>
     </div>
   );
 }
-
-export default App;

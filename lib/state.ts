@@ -1,97 +1,139 @@
-/**
- * @license
- * SPDX-License-Identifier: Apache-2.0
-*/
 import { create } from 'zustand';
-import { DEFAULT_LIVE_API_MODEL, DEFAULT_VOICE } from './constants';
+import { DEFAULT_LIVE_API_MODEL, DEFAULT_VOICE, STAFF_LANGUAGE } from './constants';
 import {
-  // FIX: Add FunctionDeclaration and FunctionResponseScheduling to imports.
   FunctionDeclaration,
   FunctionResponse,
   FunctionResponseScheduling,
   LiveServerToolCall,
 } from '@google/genai';
 
-const generateSystemPrompt = (lang1: string, lang2: string, topic: string) => {
-  const topicInstruction = topic ? `The conversation is about: ${topic}. Please use appropriate terminology and context.` : '';
-  return `You are an expert language translator. Your only task is to translate text from ${lang1} to ${lang2}, or from ${lang2} to ${lang1}.
+// ---------------------------------------------------------------------------
+// Session state machine
+// ---------------------------------------------------------------------------
 
-**CRITICAL INSTRUCTIONS:**
-1. DETECT the language of the input text (${lang1} or ${lang2}).
-2. TRANSLATE the input text into the other language.
-3. OUTPUT **ONLY** THE TRANSLATED TEXT.
-4. OUTPUT **ONLY** THE TRANSLATED TEXT.
-5. OUTPUT **ONLY** THE TRANSLATED TEXT.
+export type SessionPhase = 'idle' | 'prompting' | 'detecting' | 'live' | 'error';
+export type GuestLanguageSource = 'auto' | 'manual-override' | null;
+export type TurnDirection = 'guest-to-staff' | 'staff-to-guest' | null;
 
-**DO NOT:**
-- DO NOT add any prefixes, labels, or explanations (e.g., "In Spanish: ...").
-- DO NOT have a conversation.
-- DO NOT add any commentary or remarks.
-- DO NOT ask questions.
+export interface SessionState {
+  staffLanguage: string;
+  guestLanguage: string | null;
+  guestLanguageSource: GuestLanguageSource;
+  sessionPhase: SessionPhase;
+  activeTurn: TurnDirection;
+  detectionConfidence: number | null;
+  lastDetectedTranscript: string | null;
+  errorMessage: string | null;
 
-Your entire response must be the translated phrase. For example, if the input is "Hello" and the target language is Spanish, your output must be "Hola", not "The translation is Hola".
-${topicInstruction}
-`;
+  pendingAction: 'start' | 'stop' | 'reset-language' | null;
+  pendingLanguageOverride: string | null;
+
+  requestStart: () => void;
+  requestStop: () => void;
+  requestResetLanguage: () => void;
+  requestLanguageOverride: (language: string) => void;
+  clearPendingAction: () => void;
+
+  setStaffLanguage: (language: string) => void;
+  setPhase: (phase: SessionPhase) => void;
+  setGuestLanguage: (language: string, confidence: number, source: GuestLanguageSource) => void;
+  setActiveTurn: (direction: TurnDirection) => void;
+  setLastDetectedTranscript: (transcript: string) => void;
+  setError: (message: string) => void;
+  reset: () => void;
+}
+
+const SESSION_DEFAULTS = {
+  staffLanguage: STAFF_LANGUAGE,
+  guestLanguage: null as string | null,
+  guestLanguageSource: null as GuestLanguageSource,
+  sessionPhase: 'idle' as SessionPhase,
+  activeTurn: null as TurnDirection,
+  detectionConfidence: null as number | null,
+  lastDetectedTranscript: null as string | null,
+  errorMessage: null as string | null,
+  pendingAction: null as 'start' | 'stop' | 'reset-language' | null,
+  pendingLanguageOverride: null as string | null,
 };
 
+export const useSessionStore = create<SessionState>((set) => ({
+  ...SESSION_DEFAULTS,
 
-/**
- * Settings
- */
+  requestStart: () => set({ pendingAction: 'start' }),
+  requestStop: () => set({ pendingAction: 'stop' }),
+  requestResetLanguage: () => set({ pendingAction: 'reset-language' }),
+  requestLanguageOverride: (language) =>
+    set({ pendingAction: 'reset-language', pendingLanguageOverride: language }),
+  clearPendingAction: () => set({ pendingAction: null, pendingLanguageOverride: null }),
+
+  setStaffLanguage: (language) => set({ staffLanguage: language }),
+  setPhase: (phase) => set({ sessionPhase: phase, errorMessage: null }),
+  setGuestLanguage: (language, confidence, source) =>
+    set({ guestLanguage: language, detectionConfidence: confidence, guestLanguageSource: source }),
+  setActiveTurn: (direction) => set({ activeTurn: direction }),
+  setLastDetectedTranscript: (transcript) => set({ lastDetectedTranscript: transcript }),
+  setError: (message) => set({ sessionPhase: 'error', errorMessage: message }),
+  reset: () => set({ ...SESSION_DEFAULTS }),
+}));
+
+// ---------------------------------------------------------------------------
+// App settings (voice, model, topic)
+// ---------------------------------------------------------------------------
+
 export const useSettings = create<{
-  systemPrompt: string;
   model: string;
   voice: string;
-  language1: string;
-  language2: string;
   topic: string;
-  setSystemPrompt: (prompt: string) => void;
   setModel: (model: string) => void;
   setVoice: (voice: string) => void;
-  setLanguage1: (language: string) => void;
-  setLanguage2: (language: string) => void;
   setTopic: (topic: string) => void;
-}>((set, get) => ({
-  systemPrompt: generateSystemPrompt('English (US)', 'Dutch', ''),
+}>((set) => ({
   model: DEFAULT_LIVE_API_MODEL,
   voice: DEFAULT_VOICE,
-  language1: 'English (US)',
-  language2: 'Dutch',
   topic: '',
-  setSystemPrompt: prompt => set({ systemPrompt: prompt }),
-  setModel: model => set({ model }),
-  setVoice: voice => set({ voice }),
-  setLanguage1: language => set({
-    language1: language,
-    systemPrompt: generateSystemPrompt(language, get().language2, get().topic)
-  }),
-  setLanguage2: language => set({
-    language2: language,
-    systemPrompt: generateSystemPrompt(get().language1, language, get().topic)
-  }),
-  setTopic: topic => set({
-    topic: topic,
-    systemPrompt: generateSystemPrompt(get().language1, get().language2, topic)
-  }),
+  setModel: (model) => set({ model }),
+  setVoice: (voice) => set({ voice }),
+  setTopic: (topic) => set({ topic }),
 }));
 
-/**
- * UI
- */
+// ---------------------------------------------------------------------------
+// UI state
+// ---------------------------------------------------------------------------
+
 export const useUI = create<{
   isSidebarOpen: boolean;
+  isProfileOpen: boolean;
+  micVolume: number;
+  introVolume: number;
+  ttsVolume: number;
+  introComplete: boolean;
+  dbSessionId: string | null;
   toggleSidebar: () => void;
-}>(set => ({
-  isSidebarOpen: true,
-  toggleSidebar: () => set(state => ({ isSidebarOpen: !state.isSidebarOpen })),
+  toggleProfile: () => void;
+  setMicVolume: (v: number) => void;
+  setIntroVolume: (v: number) => void;
+  setTtsVolume: (v: number) => void;
+  setIntroComplete: (v: boolean) => void;
+}>((set) => ({
+  isSidebarOpen: false,
+  isProfileOpen: false,
+  micVolume: 0,
+  introVolume: 0,
+  ttsVolume: 0,
+  introComplete: false,
+  dbSessionId: null,
+  toggleSidebar: () => set((s) => ({ isSidebarOpen: !s.isSidebarOpen, isProfileOpen: false })),
+  toggleProfile: () => set((s) => ({ isProfileOpen: !s.isProfileOpen, isSidebarOpen: false })),
+  setMicVolume: (micVolume) => set({ micVolume }),
+  setIntroVolume: (introVolume) => set({ introVolume }),
+  setTtsVolume: (ttsVolume) => set({ ttsVolume }),
+  setIntroComplete: (introComplete) => set({ introComplete }),
 }));
 
-// FIX: Define and export the FunctionCall interface.
-/**
- * Tools
- */
-// FIX: The FunctionCall interface was redefined to explicitly include the name, description, and parameters properties.
-// This resolves TS errors where these properties were reported as missing because `FunctionDeclaration` did not seem to contain them.
+// ---------------------------------------------------------------------------
+// Conversation turns log
+// ---------------------------------------------------------------------------
+
 export interface FunctionCall {
   name: string;
   description: string;
@@ -100,17 +142,12 @@ export interface FunctionCall {
   scheduling: FunctionResponseScheduling;
 }
 
-/**
- * Logs
- */
 export interface LiveClientToolResponse {
   functionResponses?: FunctionResponse[];
 }
+
 export interface GroundingChunk {
-  web?: {
-    uri: string;
-    title: string;
-  };
+  web?: { uri?: string; title?: string };
 }
 
 export interface ConversationTurn {
@@ -118,6 +155,10 @@ export interface ConversationTurn {
   role: 'user' | 'agent' | 'system';
   text: string;
   isFinal: boolean;
+  speakerRole?: 'staff' | 'guest' | 'system';
+  direction?: TurnDirection;
+  sourceLanguage?: string;
+  targetLanguage?: string;
   toolUseRequest?: LiveServerToolCall;
   toolUseResponse?: LiveClientToolResponse;
   groundingChunks?: GroundingChunk[];
@@ -128,22 +169,16 @@ export const useLogStore = create<{
   addTurn: (turn: Omit<ConversationTurn, 'timestamp'>) => void;
   updateLastTurn: (update: Partial<ConversationTurn>) => void;
   clearTurns: () => void;
-}>((set, get) => ({
+}>((set) => ({
   turns: [],
-  addTurn: (turn: Omit<ConversationTurn, 'timestamp'>) =>
-    set(state => ({
-      turns: [...state.turns, { ...turn, timestamp: new Date() }],
-    })),
-  updateLastTurn: (update: Partial<Omit<ConversationTurn, 'timestamp'>>) => {
-    set(state => {
-      if (state.turns.length === 0) {
-        return state;
-      }
-      const newTurns = [...state.turns];
-      const lastTurn = { ...newTurns[newTurns.length - 1], ...update };
-      newTurns[newTurns.length - 1] = lastTurn;
+  addTurn: (turn) =>
+    set((s) => ({ turns: [...s.turns, { ...turn, timestamp: new Date() }] })),
+  updateLastTurn: (update) =>
+    set((s) => {
+      if (s.turns.length === 0) return s;
+      const newTurns = [...s.turns];
+      newTurns[newTurns.length - 1] = { ...newTurns[newTurns.length - 1], ...update };
       return { turns: newTurns };
-    });
-  },
+    }),
   clearTurns: () => set({ turns: [] }),
 }));
