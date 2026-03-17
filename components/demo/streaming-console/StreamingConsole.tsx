@@ -29,8 +29,6 @@ export default function StreamingConsole() {
 
   const detectionBufferRef = useRef('');
   const welcomeCompletedRef = useRef(false);
-  const detectionTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const detectionCandidateRef = useRef<{ locale: string; confidence: number } | null>(null);
   const phaseRef = useRef(session.sessionPhase);
   phaseRef.current = session.sessionPhase;
 
@@ -41,6 +39,29 @@ export default function StreamingConsole() {
   staffLangRef.current = session.staffLanguage;
 
   const introPlayedRef = useRef(false);
+  const prevSpeakerRef = useRef<'staff' | 'guest' | 'ai' | 'none'>('none');
+
+  function playTurnChime() {
+    try {
+      const ctx = new AudioContext();
+      const g = ctx.createGain();
+      g.connect(ctx.destination);
+      g.gain.setValueAtTime(0.25, ctx.currentTime);
+      g.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.4);
+
+      const o = ctx.createOscillator();
+      o.type = 'sine';
+      o.frequency.setValueAtTime(1100, ctx.currentTime);
+      o.frequency.linearRampToValueAtTime(1600, ctx.currentTime + 0.18);
+      o.connect(g);
+      o.start();
+      o.stop(ctx.currentTime + 0.4);
+
+      setTimeout(() => ctx.close().catch(() => {}), 600);
+    } catch {
+      // ignore
+    }
+  }
 
   const buildConfig = useCallback(
     (systemPrompt: string) =>
@@ -110,8 +131,6 @@ export default function StreamingConsole() {
 
     if (action === 'start') {
       detectionBufferRef.current = '';
-      detectionCandidateRef.current = null;
-      if (detectionTimerRef.current) { clearTimeout(detectionTimerRef.current); detectionTimerRef.current = null; }
       welcomeCompletedRef.current = false;
       useLogStore.getState().clearTurns();
       session.setPhase('prompting');
@@ -133,8 +152,7 @@ export default function StreamingConsole() {
     }
 
     if (action === 'stop') {
-      if (detectionTimerRef.current) { clearTimeout(detectionTimerRef.current); detectionTimerRef.current = null; }
-      detectionCandidateRef.current = null;
+      useUI.getState().setActiveSpeaker('none');
 
       const dbSid = useUI.getState().dbSessionId;
       if (dbSid) {
@@ -176,11 +194,6 @@ export default function StreamingConsole() {
 
     const commitLanguage = (locale: string, confidence: number) => {
       if (useSessionStore.getState().guestLanguage) return;
-      if (detectionTimerRef.current) {
-        clearTimeout(detectionTimerRef.current);
-        detectionTimerRef.current = null;
-      }
-      detectionCandidateRef.current = null;
       const sLang = staffLangRef.current;
       useSessionStore.getState().setGuestLanguage(locale, confidence, 'auto');
       const prompt = buildBidirectionalPrompt(locale, topic, sLang);
@@ -209,25 +222,9 @@ export default function StreamingConsole() {
         const sLang = staffLangRef.current;
         const result = detectLanguageFromText(trimmed);
 
-        if (result && !isStaffLanguage(result.normalizedLocale, sLang)) {
-          if (result.confidence >= 0.55) {
-            commitLanguage(result.normalizedLocale, result.confidence);
-            return;
-          }
-          if (!detectionCandidateRef.current || result.confidence > detectionCandidateRef.current.confidence) {
-            detectionCandidateRef.current = { locale: result.normalizedLocale, confidence: result.confidence };
-          }
-        }
-
-        if (!detectionTimerRef.current) {
-          detectionTimerRef.current = setTimeout(() => {
-            detectionTimerRef.current = null;
-            if (useSessionStore.getState().guestLanguage) return;
-            const candidate = detectionCandidateRef.current;
-            if (candidate) {
-              commitLanguage(candidate.locale, candidate.confidence);
-            }
-          }, 3000);
+        if (result && !isStaffLanguage(result.normalizedLocale, sLang) && result.confidence >= MIN_DETECTION_CONFIDENCE) {
+          commitLanguage(result.normalizedLocale, result.confidence);
+          return;
         }
         return;
       }
@@ -237,6 +234,13 @@ export default function StreamingConsole() {
       const speakerRole = direction === 'staff-to-guest' ? 'staff' : 'guest';
       if (direction) {
         useSessionStore.getState().setActiveTurn(direction);
+        const newSpeaker = speakerRole;
+        const ui = useUI.getState();
+        if (prevSpeakerRef.current !== newSpeaker) {
+          prevSpeakerRef.current = newSpeaker;
+          ui.setActiveSpeaker(newSpeaker);
+          playTurnChime();
+        }
       }
 
       if (last && last.role === 'user' && !last.isFinal) {
@@ -286,6 +290,12 @@ export default function StreamingConsole() {
           sourceLanguage: dir === 'staff-to-guest' ? currentSession.staffLanguage : (currentSession.guestLanguage ?? undefined),
           targetLanguage: dir === 'staff-to-guest' ? (currentSession.guestLanguage ?? undefined) : currentSession.staffLanguage,
         });
+        const ui = useUI.getState();
+        if (prevSpeakerRef.current !== 'ai') {
+          prevSpeakerRef.current = 'ai';
+          ui.setActiveSpeaker('ai');
+          playTurnChime();
+        }
       }
     };
 
@@ -350,6 +360,10 @@ export default function StreamingConsole() {
           }
         }
       }
+
+      // Turn has fully completed; no-one actively has the floor now.
+      prevSpeakerRef.current = 'none';
+      useUI.getState().setActiveSpeaker('none');
     };
 
     client.on('inputTranscription', handleInputTranscription);

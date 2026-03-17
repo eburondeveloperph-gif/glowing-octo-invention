@@ -101,7 +101,7 @@ const SessionDisplay: React.FC = () => {
     [turns, session.staffLanguage, session.guestLanguage],
   );
   const hasConversation = isActive && records.length > 0;
-  const showIntroText = isActive && !hasConversation && (isDetecting || !introComplete);
+  const showIntroText = isActive && !hasConversation && isDetecting && !introComplete;
 
   const staffScrollRef = useRef<HTMLDivElement>(null);
   const guestScrollRef = useRef<HTMLDivElement>(null);
@@ -171,8 +171,8 @@ const SessionDisplay: React.FC = () => {
 
   return (
     <div className={cn('center-stage-content', { 'has-conversation': hasConversation })}>
-      {/* Orb — center idle, mini header when conversation active */}
-      <div className={cn('orb-wrapper', { mini: hasConversation })}>
+      {/* Orb — center idle, mini header once intro done or conversation active */}
+      <div className={cn('orb-wrapper', { mini: isActive && (hasConversation || introComplete) })}>
         <div className={cn('orb-container', { error: isError })} onClick={handleOrbClick}
           style={orbGlow ? { boxShadow: orbGlow } : undefined}>
           <div className="orb-grid" />

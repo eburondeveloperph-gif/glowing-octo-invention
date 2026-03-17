@@ -40,6 +40,7 @@ function ControlTray({ children }: ControlTrayProps) {
 
   const session = useSessionStore();
   const { toggleSidebar, toggleProfile, setMicVolume } = useUI();
+  const activeSpeaker = useUI((s) => s.activeSpeaker);
   const setTtsVolume = useUI((s) => s.setTtsVolume);
 
   const isIdle = session.sessionPhase === 'idle';
@@ -214,7 +215,12 @@ function ControlTray({ children }: ControlTrayProps) {
           <button
             className={cn('center-mic-btn', {
               muted: connected && muted,
-              'mic-active': connected && !muted && useUI.getState().micVolume > 0.05,
+              listening: connected && !muted && (activeSpeaker === 'staff' || activeSpeaker === 'guest'),
+              'mic-active':
+                connected &&
+                !muted &&
+                (activeSpeaker === 'staff' || activeSpeaker === 'guest') &&
+                useUI.getState().micVolume > 0.05,
             })}
             onClick={handleMicToggle}
             disabled={!connected}

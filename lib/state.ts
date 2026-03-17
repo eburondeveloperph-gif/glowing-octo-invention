@@ -108,12 +108,14 @@ export const useUI = create<{
   ttsVolume: number;
   introComplete: boolean;
   dbSessionId: string | null;
+  activeSpeaker: 'none' | 'staff' | 'guest' | 'ai';
   toggleSidebar: () => void;
   toggleProfile: () => void;
   setMicVolume: (v: number) => void;
   setIntroVolume: (v: number) => void;
   setTtsVolume: (v: number) => void;
   setIntroComplete: (v: boolean) => void;
+  setActiveSpeaker: (s: 'none' | 'staff' | 'guest' | 'ai') => void;
 }>((set) => ({
   isSidebarOpen: false,
   isProfileOpen: false,
@@ -122,12 +124,14 @@ export const useUI = create<{
   ttsVolume: 0,
   introComplete: false,
   dbSessionId: null,
+  activeSpeaker: 'none',
   toggleSidebar: () => set((s) => ({ isSidebarOpen: !s.isSidebarOpen, isProfileOpen: false })),
   toggleProfile: () => set((s) => ({ isProfileOpen: !s.isProfileOpen, isSidebarOpen: false })),
   setMicVolume: (micVolume) => set({ micVolume }),
   setIntroVolume: (introVolume) => set({ introVolume }),
   setTtsVolume: (ttsVolume) => set({ ttsVolume }),
   setIntroComplete: (introComplete) => set({ introComplete }),
+  setActiveSpeaker: (activeSpeaker) => set({ activeSpeaker }),
 }));
 
 // ---------------------------------------------------------------------------
