@@ -137,14 +137,19 @@ export default function StreamingConsole() {
       if (useSessionStore.getState().guestLanguage) return;
       const sLang = staffLangRef.current;
       useSessionStore.getState().setGuestLanguage(locale, confidence, 'auto');
+      useSessionStore.getState().setLastDetectedTranscript('');
       useUI.getState().setGuestLanguageJustConfirmed(true);
       playLanguageConfirmedChime();
       setTimeout(() => useUI.getState().setGuestLanguageJustConfirmed(false), 1500);
+      // Lock phase to live immediately — stop detection, start translation
+      useSessionStore.getState().setPhase('live');
+      detectionBufferRef.current = '';
+      pendingLanguageRef.current = null;
       const prompt = buildBidirectionalPrompt(locale, topic, sLang);
       disconnect();
-      connectWithConfig(buildConfig(prompt))
-        .then(() => useSessionStore.getState().setPhase('live'))
-        .catch(() => useSessionStore.getState().setError('Herverbinding mislukt'));
+      connectWithConfig(buildConfig(prompt)).catch(() =>
+        useSessionStore.getState().setError('Herverbinding mislukt'),
+      );
     };
 
     const handleInputTranscription = (text: string, isFinal: boolean) => {
