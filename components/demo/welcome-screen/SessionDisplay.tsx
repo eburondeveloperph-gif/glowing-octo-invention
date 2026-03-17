@@ -228,27 +228,35 @@ const SessionDisplay: React.FC = () => {
 
       {showRoulette && <LanguageRoulette />}
 
-      {/* Two-panel conversation — staff side (left), guest side (right) */}
+      {/* Two-panel conversation —      (left),    (right) */}
       {showConversationArea && (
         <div className={cn('conversation-area', { 'has-records': records.length > 0 })}>
           <div className="conversation-side staff-side">
+            <h3 className="conv-panel-title">    </h3>
             <div className="conv-scroll" ref={staffScrollRef}>
               {records.length === 0 ? (
                 <p className="conv-empty">
                   {isLive && session.guestLanguage ? 'Speak to translate' : '—'}
                 </p>
               ) : (
-                records.map((r) => (
-                  <div className={cn('conv-card', r.speaker === 'staff' ? 'own-card' : 'other-card')} key={r.key}>
-                    <p className="conv-text">{r.staffLangText}</p>
-                    {r.guestLangText !== r.staffLangText && (
-                      <p className="conv-trans">
-                        {r.guestLangText}
-                        {r.isStreaming && <span className="transcript-cursor" />}
+                records.map((r) => {
+                  const isStaff = r.speaker === 'staff';
+                  return (
+                    <div className={cn('conv-card', isStaff ? 'own-card' : 'other-card')} key={r.key}>
+                      <p className="conv-text">
+                        <span className="conv-trans-label">{isStaff ? 'You:' : 'Guest:'}</span>{' '}
+                        {r.staffLangText}
                       </p>
-                    )}
-                  </div>
-                ))
+                      {r.guestLangText !== r.staffLangText && (
+                        <p className="conv-trans">
+                          <span className="conv-trans-label">{isStaff ? 'Translation:' : 'Original:'}</span>{' '}
+                          {r.guestLangText}
+                          {r.isStreaming && <span className="transcript-cursor" />}
+                        </p>
+                      )}
+                    </div>
+                  );
+                })
               )}
             </div>
           </div>
@@ -256,23 +264,31 @@ const SessionDisplay: React.FC = () => {
           <div className="conversation-divider" />
 
           <div className="conversation-side guest-side">
+            <h3 className="conv-panel-title">  </h3>
             <div className="conv-scroll" ref={guestScrollRef}>
               {records.length === 0 ? (
                 <p className="conv-empty">
                   {isLive && session.guestLanguage ? 'Speak to translate' : '—'}
                 </p>
               ) : (
-                records.map((r) => (
-                  <div className={cn('conv-card', r.speaker === 'guest' ? 'own-card' : 'other-card')} key={r.key}>
-                    <p className="conv-text">{r.guestLangText}</p>
-                    {r.guestLangText !== r.staffLangText && (
-                      <p className="conv-trans">
-                        {r.staffLangText}
-                        {r.isStreaming && <span className="transcript-cursor" />}
+                records.map((r) => {
+                  const isGuest = r.speaker === 'guest';
+                  return (
+                    <div className={cn('conv-card', isGuest ? 'own-card' : 'other-card')} key={r.key}>
+                      <p className="conv-text">
+                        <span className="conv-trans-label">{isGuest ? 'You:' : 'Staff:'}</span>{' '}
+                        {r.guestLangText}
                       </p>
-                    )}
-                  </div>
-                ))
+                      {r.guestLangText !== r.staffLangText && (
+                        <p className="conv-trans">
+                          <span className="conv-trans-label">{isGuest ? 'Translation:' : 'Original:'}</span>{' '}
+                          {r.staffLangText}
+                          {r.isStreaming && <span className="transcript-cursor" />}
+                        </p>
+                      )}
+                    </div>
+                  );
+                })
               )}
             </div>
           </div>

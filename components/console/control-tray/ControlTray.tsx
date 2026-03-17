@@ -39,16 +39,45 @@ function ControlTray({ children }: ControlTrayProps) {
   } = useLiveAPIContext();
 
   const session = useSessionStore();
+  const turns = useLogStore((s) => s.turns);
   const { toggleSidebar, toggleProfile, setMicVolume } = useUI();
   const micVolume = useUI((s) => s.micVolume);
   const ttsVolume = useUI((s) => s.ttsVolume);
   const setTtsVolume = useUI((s) => s.setTtsVolume);
+  const awaitingAiResponse = useUI((s) => s.awaitingAiResponse);
 
   const isIdle = session.sessionPhase === 'idle';
   const isError = session.sessionPhase === 'error';
   const isActive = !isIdle && !isError;
   const isListening =
     session.sessionPhase === 'live' && !!session.guestLanguage;
+
+  const hasConversation = turns.some(
+    (t) => t.role === 'user' && (t.speakerRole === 'staff' || t.speakerRole === 'guest')
+  );
+  const showWaitingForGuest = isListening && !hasConversation;
+
+  const silenceTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => {
+    if (!isListening || !hasConversation || awaitingAiResponse) return;
+    const reset = () => {
+      if (silenceTimeoutRef.current) {
+        clearTimeout(silenceTimeoutRef.current);
+        silenceTimeoutRef.current = null;
+      }
+      silenceTimeoutRef.current = setTimeout(() => {
+        silenceTimeoutRef.current = null;
+        useSessionStore.getState().requestStop();
+      }, 30_000);
+    };
+    reset();
+    return () => {
+      if (silenceTimeoutRef.current) {
+        clearTimeout(silenceTimeoutRef.current);
+        silenceTimeoutRef.current = null;
+      }
+    };
+  }, [isListening, hasConversation, awaitingAiResponse, turns.length, ttsVolume, micVolume]);
 
   useEffect(() => { setTtsVolume(ttsVolumeRaw); }, [ttsVolumeRaw, setTtsVolume]);
 
@@ -80,8 +109,6 @@ function ControlTray({ children }: ControlTrayProps) {
       useUI.getState().setAwaitingAiResponse(false);
     }
   }, [connected, setMicVolume]);
-
-  const awaitingAiResponse = useUI((s) => s.awaitingAiResponse);
 
   useEffect(() => {
     const onData = (base64: string) => {
@@ -219,7 +246,18 @@ function ControlTray({ children }: ControlTrayProps) {
           </button>
 
           {/* Center mic button — red listening (15% bigger, breathing) when guest language locked */}
-          <button
+          <div className="mic-wrapper">
+            {showWaitingForGuest && (
+              <p className="waiting-for-guest">
+                Waiting for Guest to Speak
+                <span className="waiting-dots">
+                  <span>.</span>
+                  <span>.</span>
+                  <span>.</span>
+                </span>
+              </p>
+            )}
+            <button
             className={cn('center-mic-btn', {
               listening: isListening,
               active:
@@ -260,6 +298,7 @@ function ControlTray({ children }: ControlTrayProps) {
               </svg>
             </span>
           </button>
+          </div>
 
           {/* Settings */}
           <button

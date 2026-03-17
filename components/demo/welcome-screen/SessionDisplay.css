@@ -240,6 +240,20 @@
   overflow: hidden;
 }
 
+.conv-panel-title {
+  margin: 0;
+  padding: 8px 14px 6px;
+  font-size: 0.8rem;
+  font-weight: 600;
+  letter-spacing: 0.5px;
+  color: var(--text-muted, #8a91a1);
+  text-transform: uppercase;
+  flex-shrink: 0;
+}
+
+.staff-side .conv-panel-title { color: rgba(0, 180, 255, 0.7); }
+.guest-side .conv-panel-title { color: rgba(167, 139, 250, 0.7); }
+
 .conv-scroll {
   flex: 1;
   overflow-y: auto;

@@ -15,7 +15,7 @@ import { inferTurnDirection } from '../../../lib/language-detection';
 import { AVAILABLE_LANGUAGES } from '../../../lib/constants';
 import { createSession, endSession, saveTranslation } from '../../../lib/db';
 import { supabase } from '../../../lib/supabase';
-import { playTurnChime, playLanguageConfirmedChime, announceGuestLanguage, playSelectLanguageAudio, playMicOnChime, playLanguageSelectedChime } from '../../../lib/chime';
+import { playTurnChime, playLanguageConfirmedChime, playSelectLanguageAudio, playMicOnChime, playLanguageSelectedChime } from '../../../lib/chime';
 import SessionDisplay from '../welcome-screen/SessionDisplay';
 
 function extractLanguageFromConfirm(text: string): string | null {
@@ -110,8 +110,6 @@ export default function StreamingConsole() {
       useUI.getState().setAwaitingAiResponse(false);
       playLanguageSelectedChime();
       playMicOnChime();
-      const lang = AVAILABLE_LANGUAGES.find((l) => l.value === locale);
-      announceGuestLanguage(lang?.name ?? locale);
       setTimeout(() => useUI.getState().setGuestLanguageJustConfirmed(false), 1500);
       const prompt = buildBidirectionalPrompt(locale, topic, sLang);
       connectWithConfig(buildConfig(prompt))
@@ -174,8 +172,6 @@ export default function StreamingConsole() {
       useSessionStore.getState().setLastDetectedTranscript('');
       useUI.getState().setGuestLanguageJustConfirmed(true);
       playLanguageConfirmedChime();
-      const lang = AVAILABLE_LANGUAGES.find((l) => l.value === locale);
-      announceGuestLanguage(lang?.name ?? locale);
       setTimeout(() => useUI.getState().setGuestLanguageJustConfirmed(false), 1500);
       // Lock phase to live immediately — stop detection, start translation
       useSessionStore.getState().setPhase('live');
