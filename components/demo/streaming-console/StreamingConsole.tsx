@@ -59,7 +59,7 @@ export default function StreamingConsole() {
 
   const introFrameRef = useRef<number>(0);
 
-  // Play select-language.mp3 for 5s, then enable mic for language detection
+  // Play play.mp3 for 5s, then enable mic for language detection
   useEffect(() => {
     const phase = session.sessionPhase;
 
@@ -68,7 +68,7 @@ export default function StreamingConsole() {
       useUI.getState().setIntroComplete(false);
 
       // Play audio for 5 seconds
-      const audio = new Audio('/select-language.mp3');
+      const audio = new Audio('/play.mp3');
       audio.play().catch(() => {});
       
       setTimeout(() => {

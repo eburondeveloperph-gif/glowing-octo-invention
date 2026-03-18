@@ -118,7 +118,6 @@ const SessionDisplay: React.FC = () => {
 
   const handleOrbClick = () => {
     if (isActive) session.requestStop();
-    else { playChime(); session.requestStart(); }
   };
 
   useEffect(() => {

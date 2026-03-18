@@ -143,6 +143,30 @@ button[disabled] { opacity: 0.5; cursor: not-allowed; }
   transition: height 0.1s ease-out;
 }
 
+.header-start-btn {
+  background: linear-gradient(180deg, #00cc66, #009944);
+  border: 1px solid rgba(100, 255, 150, 0.5);
+  padding: 12px 30px;
+  border-radius: 25px;
+  color: white;
+  font-size: 16px;
+  font-weight: 600;
+  cursor: pointer;
+  box-shadow: 0 4px 20px rgba(0, 200, 100, 0.5),
+    inset 0 2px 5px rgba(255, 255, 255, 0.3);
+  transition: transform 0.1s, box-shadow 0.2s;
+}
+
+.header-start-btn:hover {
+  transform: scale(1.05);
+  box-shadow: 0 6px 25px rgba(0, 200, 100, 0.6),
+    inset 0 2px 5px rgba(255, 255, 255, 0.3);
+}
+
+.header-start-btn:active {
+  transform: scale(0.98);
+}
+
 .user-panel {
   display: flex;
   align-items: center;
