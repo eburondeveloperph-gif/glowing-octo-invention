@@ -8,6 +8,7 @@ export default function Header() {
   const sessionPhase = useSessionStore((s) => s.sessionPhase);
   const introVolume = useUI((s) => s.introVolume);
   const micVolume = useUI((s) => s.micVolume);
+  const isIdle = sessionPhase === 'idle';
   const isActive = sessionPhase !== 'idle' && sessionPhase !== 'error';
   const isGuestLocked = guestLanguage !== null && guestLanguageSource !== null;
 
@@ -17,6 +18,12 @@ export default function Header() {
   };
 
   const orbVolume = isActive ? Math.max(introVolume, micVolume) : 0;
+
+  const handleStart = () => {
+    if (isIdle) {
+      useSessionStore.getState().requestStart();
+    }
+  };
 
   return (
     <header className="top-bar">
@@ -28,8 +35,13 @@ export default function Header() {
         <div className="lang-chip">{langName(staffLanguage)}</div>
       </div>
 
-      {/* Orb in header when active */}
-      {isActive && (
+      {/* Start button in header when idle */}
+      {isIdle ? (
+        <button className="header-start-btn" onClick={handleStart}>
+          Start
+        </button>
+      ) : (
+        /* Mini orb in header when active */
         <div className="header-orb" style={{
           boxShadow: orbVolume > 0.01
             ? `0 0 ${20 + orbVolume * 30}px ${8 + orbVolume * 15}px rgba(255,68,68,${0.4 + orbVolume * 0.4})`
