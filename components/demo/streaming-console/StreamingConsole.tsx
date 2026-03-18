@@ -13,6 +13,7 @@ import { useHistoryStore } from '../../../lib/history';
 import { buildDetectionPrompt, buildBidirectionalPrompt } from '../../../lib/prompts';
 import {
   detectLanguageFromText,
+  detectLanguageNameFromTranscript,
   inferTurnDirection,
   isStaffLanguage,
 } from '../../../lib/language-detection';
@@ -58,7 +59,7 @@ export default function StreamingConsole() {
 
   const introFrameRef = useRef<number>(0);
 
-  // Play intro audio instantly on Start; visualize on the orb via AnalyserNode
+  // Play select-language.mp3 for 5s, then enable mic for language detection
   useEffect(() => {
     const phase = session.sessionPhase;
 
@@ -66,38 +67,19 @@ export default function StreamingConsole() {
       introPlayedRef.current = true;
       useUI.getState().setIntroComplete(false);
 
-      const audioCtx = new AudioContext();
-      const audio = new Audio('/play.mp3');
-      audio.crossOrigin = 'anonymous';
-      const source = audioCtx.createMediaElementSource(audio);
-      const analyser = audioCtx.createAnalyser();
-      analyser.fftSize = 256;
-      source.connect(analyser);
-      analyser.connect(audioCtx.destination);
-
-      const buf = new Uint8Array(analyser.frequencyBinCount);
-      const measure = () => {
-        analyser.getByteFrequencyData(buf);
-        const avg = buf.reduce((a, b) => a + b, 0) / buf.length;
-        useUI.getState().setIntroVolume(avg / 255);
-        introFrameRef.current = requestAnimationFrame(measure);
-      };
-
-      const cleanup = () => {
-        cancelAnimationFrame(introFrameRef.current);
-        useUI.getState().setIntroVolume(0);
+      // Play audio for 5 seconds
+      const audio = new Audio('/select-language.mp3');
+      audio.play().catch(() => {});
+      
+      setTimeout(() => {
+        audio.pause();
+        audio.currentTime = 0;
         useUI.getState().setIntroComplete(true);
-        audioCtx.close().catch(() => {});
-      };
-
-      audio.addEventListener('ended', cleanup);
-      audio.addEventListener('error', cleanup);
-      audio.play().then(measure).catch(cleanup);
+      }, 5000);
     }
 
     if (phase === 'idle') {
       introPlayedRef.current = false;
-      cancelAnimationFrame(introFrameRef.current);
       useUI.getState().setIntroVolume(0);
       useUI.getState().setIntroComplete(false);
     }
@@ -114,7 +96,7 @@ export default function StreamingConsole() {
       if (detectionTimerRef.current) { clearTimeout(detectionTimerRef.current); detectionTimerRef.current = null; }
       welcomeCompletedRef.current = false;
       useLogStore.getState().clearTurns();
-      session.setPhase('prompting');
+      session.setPhase('detecting');
 
       supabase.auth.getUser().then(({ data }) => {
         if (data.user) {
@@ -207,6 +189,33 @@ export default function StreamingConsole() {
         useSessionStore.getState().setLastDetectedTranscript(trimmed);
 
         const sLang = staffLangRef.current;
+
+        // First check if user said a language name (e.g. "French", "Arabic")
+        const langName = detectLanguageNameFromTranscript(trimmed);
+        if (langName && !isStaffLanguage(langName, sLang)) {
+          if (detectionTimerRef.current) { clearTimeout(detectionTimerRef.current); detectionTimerRef.current = null; }
+          useSessionStore.getState().setGuestLanguage(langName, 1.0, 'manual-override');
+          
+          // Start DB session now that we know languages
+          supabase.auth.getUser().then(({ data }) => {
+            if (data.user) {
+              createSession(data.user.id, sLang).then((id) => {
+                if (id) useUI.setState({ dbSessionId: id });
+              });
+            }
+          });
+
+          // Switch to bidirectional translation
+          const prompt = buildBidirectionalPrompt(langName, topic, sLang);
+          disconnect();
+          connectWithConfig(buildConfig(prompt)).catch(() => {
+            useSessionStore.getState().setError('Kan geen verbinding maken');
+          });
+          useSessionStore.getState().setPhase('live');
+          return;
+        }
+
+        // Fallback: detect language from speech patterns
         const result = detectLanguageFromText(trimmed);
 
         if (result && !isStaffLanguage(result.normalizedLocale, sLang)) {

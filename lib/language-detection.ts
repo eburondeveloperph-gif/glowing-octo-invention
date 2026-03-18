@@ -159,6 +159,39 @@ export function normalizeLanguage(detected: string): string | null {
   return match?.value ?? null;
 }
 
+function normalizeForNameMatch(input: string): string {
+  return input
+    .toLowerCase()
+    .replace(/[^\p{L}\p{N}\s]/gu, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+export function detectLanguageNameFromTranscript(transcript: string): string | null {
+  const t = normalizeForNameMatch(transcript);
+  if (!t) return null;
+
+  const exact = normalizeLanguage(transcript);
+  if (exact) return exact;
+
+  const patterns = AVAILABLE_LANGUAGES.flatMap((l) => {
+    const name = normalizeForNameMatch(l.name);
+    const value = normalizeForNameMatch(l.value);
+    const out: Array<{ pat: string; value: string }> = [];
+    if (name) out.push({ pat: name, value: l.value });
+    if (value && value !== name) out.push({ pat: value, value: l.value });
+    return out;
+  }).sort((a, b) => b.pat.length - a.pat.length);
+
+  for (const { pat, value } of patterns) {
+    if (!pat) continue;
+    const re = new RegExp(`(^|\\s)${pat.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}(\\s|$)`, 'i');
+    if (re.test(t)) return value;
+  }
+
+  return null;
+}
+
 export function isStaffLanguage(language: string, staffLang?: string): boolean {
   const l = language.toLowerCase();
   const s = (staffLang ?? STAFF_LANGUAGE).toLowerCase();
