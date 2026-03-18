@@ -219,7 +219,7 @@ export default function StreamingConsole() {
         const result = detectLanguageFromText(trimmed);
 
         if (result && !isStaffLanguage(result.normalizedLocale, sLang)) {
-          if (result.confidence >= 0.55) {
+          if (result.confidence >= 0.35) {
             commitLanguage(result.normalizedLocale, result.confidence);
             return;
           }

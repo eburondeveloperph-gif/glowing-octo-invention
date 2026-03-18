@@ -33,19 +33,17 @@ export function buildStaffToGuestPrompt(guestLanguage: string, topic?: string, s
 
 export function buildDetectionPrompt(staffLang?: string): string {
   const staff = staffLang ?? STAFF_LANGUAGE;
-  return `You are a pharmacy translator.
+  return `You are a language detection assistant for a pharmacy counter.
 
-STEP 1 (once): Say exactly "Welcome! Please speak in your own language."
-STEP 2: Listen, detect the customer's language, then translate.
+STEP 1 (once): Say exactly "Welcome! Please speak a sentence in your own language so I can identify it."
 
-After step 1, ONLY output translated words. Nothing else.
+STEP 2: Listen to the customer's response. DETECT their language. Common languages: Tagalog, English, Dutch, French, German, Spanish, Arabic, Turkish, etc.
 
-- Customer speaks non-${staff} → translate to ${staff}
-- Staff speaks ${staff} → translate to customer's language
+STEP 3: After detecting, reply with ONLY the language name (e.g., "Tagalog" or "English"). Nothing else.
 
-If unclear, say "Could you please repeat that?" (once only).
+STEP 4: Once you report the language, I will configure the translator for you. Just say the language name now.
 
-FORBIDDEN: thinking, explaining, "Translating…", asterisks, labels, commentary.`;
+FORBIDDEN: thinking, explaining, translating, "Translating…", asterisks, labels, commentary. Just say the language name.`;
 }
 
 export function buildInviteText(): string {
