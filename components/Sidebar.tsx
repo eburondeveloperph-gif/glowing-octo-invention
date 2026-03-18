@@ -11,13 +11,6 @@ export default function Sidebar() {
   const { connected } = useLiveAPIContext();
   const { history, clearHistory } = useHistoryStore();
 
-  const handleManualOverride = (lang: string) => {
-    if (lang) {
-      session.requestLanguageOverride(lang);
-      toggleSidebar();
-    }
-  };
-
   return (
     <aside className={c('sidebar', { open: isSidebarOpen })}>
       <div className="sidebar-header">
@@ -75,26 +68,6 @@ export default function Sidebar() {
           </div>
         </div>
 
-        {/* Manual language override */}
-        <div className="sidebar-section">
-          <h4 className="sidebar-section-title">Taal handmatig instellen</h4>
-          <select
-            defaultValue=""
-            onChange={(e) => handleManualOverride(e.target.value)}
-            disabled={session.sessionPhase === 'idle' || !!session.guestLanguage}
-            title="Taal handmatig selecteren"
-            aria-label="Taal handmatig selecteren"
-          >
-            <option value="" disabled>Selecteer taal...</option>
-            {AVAILABLE_LANGUAGES.filter(
-              (l) => l.value !== session.staffLanguage,
-            ).map((lang) => (
-              <option key={lang.value} value={lang.value}>
-                {lang.name}
-              </option>
-            ))}
-          </select>
-        </div>
 
         {/* Staff language */}
         <div className="sidebar-section">
